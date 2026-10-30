@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>لوحة التحكم — ChemLabX 4.0</title>
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="stylesheet" href="css/fonts.css">
+    <link rel="stylesheet" href="css/base.css">
+    <link rel="stylesheet" href="css/components.css">
+    <link rel="stylesheet" href="css/dashboard.css">
+    <script>
+        (function () {
+            var t = localStorage.getItem('chemlabx_theme');
+            if (t && t !== 'default') document.documentElement.setAttribute('data-theme', t);
+            var l = localStorage.getItem('chemlabx_lang') || 'ar';
+            document.documentElement.lang = l;
+            document.documentElement.dir = l === 'ar' ? 'rtl' : 'ltr';
+        })();
+    </script>
+</head>
+<body>
+    <div id="site-nav"></div>
+
+    <main class="page-shell" id="dashRoot"></main>
+
+    <!-- Create Class Modal -->
+    <div class="modal-overlay" id="classModal">
+        <div class="modal">
+            <h2><span data-ar="🏫 إنشاء فصل جديد" data-en="🏫 Create a new class">🏫 إنشاء فصل جديد</span>
+                <button type="button" class="close-modal" id="closeClassModal" aria-label="إغلاق" data-ar-aria-label="إغلاق" data-en-aria-label="Close">✕</button></h2>
+            <div class="modal-body">
+                <div class="form-field">
+                    <label class="form-label" for="clsName" data-ar="اسم الفصل" data-en="Class name">اسم الفصل</label>
+                    <input type="text" class="form-input" id="clsName" placeholder="مثال: كيمياء 101" data-ar-placeholder="مثال: كيمياء 101" data-en-placeholder="e.g. Chemistry 101">
+                </div>
+                <div class="form-field">
+                    <label class="form-label" for="clsDesc" data-ar="الوصف (اختياري)" data-en="Description (optional)">الوصف (اختياري)</label>
+                    <input type="text" class="form-input" id="clsDesc" placeholder="" data-ar-placeholder="وصف قصير للفصل" data-en-placeholder="Short class description">
+                </div>
+                <button type="button" class="btn btn-primary" id="saveClass" data-ar="✅ إنشاء الفصل" data-en="✅ Create class">✅ إنشاء الفصل</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Join Class Modal (students) -->
+    <div class="modal-overlay" id="joinModal">
+        <div class="modal">
+            <h2><span data-ar="🔑 الانضمام لفصل" data-en="🔑 Join a class">🔑 الانضمام لفصل</span>
+                <button type="button" class="close-modal" id="closeJoinModal" aria-label="إغلاق" data-ar-aria-label="إغلاق" data-en-aria-label="Close">✕</button></h2>
+            <div class="modal-body">
+                <div class="form-field">
+                    <label class="form-label" for="joinCode" data-ar="رمز الفصل" data-en="Class code">رمز الفصل</label>
+                    <input type="text" class="form-input" id="joinCode" placeholder="مثال: CH101" data-ar-placeholder="مثال: CH101" data-en-placeholder="e.g. CH101" style="direction:ltr;text-align:center;font-family:var(--font-mono);letter-spacing:3px;">
+                </div>
+                <button type="button" class="btn btn-primary" id="saveJoin" data-ar="✅ انضمام" data-en="✅ Join">✅ انضمام</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Create Assignment Modal (teacher) -->
+    <div class="modal-overlay" id="assignmentModal">
+        <div class="modal">
+            <h2><span data-ar="📝 إنشاء واجب" data-en="📝 Create assignment">📝 إنشاء واجب</span>
+                <button type="button" class="close-modal" id="closeAssignmentModal" aria-label="إغلاق" data-ar-aria-label="إغلاق" data-en-aria-label="Close">✕</button></h2>
+            <div class="modal-body">
+                <div class="form-field">
+                    <label class="form-label" for="asgTitle" data-ar="عنوان الواجب" data-en="Assignment title">عنوان الواجب</label>
+                    <input type="text" class="form-input" id="asgTitle" placeholder="">
+                </div>
+                <div class="form-field">
+                    <label class="form-label" for="asgType" data-ar="نوع الواجب" data-en="Assignment type">نوع الواجب</label>
+                    <select class="form-select" id="asgType">
+                        <option value="lab" data-ar="تجربة معملية" data-en="Lab experiment">تجربة معملية</option>
+                        <option value="lesson" data-ar="درس تعليمي" data-en="Lesson">درس تعليمي</option>
+                        <option value="quiz" data-ar="اختبار" data-en="Quiz">اختبار</option>
+                    </select>
+                </div>
+                <div class="form-field">
+                    <label class="form-label" for="asgTarget" data-ar="الهدف" data-en="Target">الهدف</label>
+                    <select class="form-select" id="asgTarget"></select>
+                </div>
+                <div class="form-field">
+                    <label class="form-label" for="asgDesc" data-ar="وصف الواجب" data-en="Description">وصف الواجب</label>
+                    <textarea class="form-textarea" id="asgDesc"></textarea>
+                </div>
+                <div class="form-field">
+                    <label class="form-label" for="asgDue" data-ar="الاستحقاق (اختياري)" data-en="Due date (optional)">الاستحقاق (اختياري)</label>
+                    <input type="datetime-local" class="form-input" id="asgDue" style="direction:ltr;">
+                </div>
+                <button type="button" class="btn btn-primary" id="saveAssignment" data-ar="✅ نشر الواجب" data-en="✅ Publish assignment">✅ نشر الواجب</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add student to class modal -->
+    <div class="modal-overlay" id="addStudentModal">
+        <div class="modal">
+            <h2><span data-ar="👩‍🎓 إضافة طالب" data-en="👩‍🎓 Add student">👩‍🎓 إضافة طالب</span>
+                <button type="button" class="close-modal" id="closeAddStudentModal" aria-label="إغلاق" data-ar-aria-label="إغلاق" data-en-aria-label="Close">✕</button></h2>
+            <div class="modal-body">
+                <p class="form-hint" data-ar="أدخل بريد الطالب المسجل أو أنشئ حساباً له بهذا البريد."
+                    data-en="Enter the student's registered email, or create an account with this email.">أدخل بريد الطالب المسجل أو أنشئ حساباً له بهذا البريد.</p>
+                <div class="form-field">
+                    <label class="form-label" for="stdEmail" data-ar="البريد الإلكتروني" data-en="Email">البريد الإلكتروني</label>
+                    <input type="email" class="form-input" id="stdEmail" placeholder="student@school.com">
+                </div>
+                <div class="form-field" id="stdNameWrap">
+                    <label class="form-label" for="stdName" data-ar="الاسم (لإنشاء حساب جديد)" data-en="Name (for new account)">الاسم (لإنشاء حساب جديد)</label>
+                    <input type="text" class="form-input" id="stdName" placeholder="">
+                </div>
+                <div class="form-field">
+                    <label class="form-label" for="stdPass" data-ar="كلمة مرور مؤقتة" data-en="Temporary password">كلمة مرور مؤقتة</label>
+                    <input type="text" class="form-input" id="stdPass" value="student123">
+                </div>
+                <button type="button" class="btn btn-primary" id="saveAddStudent" data-ar="✅ إضافة للفصل" data-en="✅ Add to class">✅ إضافة للفصل</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="toast-container" id="toastContainer"></div>
+
+    <script src="js/core/i18n.js"></script>
+    <script src="js/core/versions.js"></script>
+    <script src="js/core/dataport.js"></script>
+    <script src="js/core/db.js"></script>
+    <script src="js/core/auth.js"></script>
+    <script src="js/core/ui.js"></script>
+    <script src="js/data/materials.js"></script>
+    <script src="js/data/reactions.js"></script>
+    <script src="js/data/achievements.js"></script>
+    <script src="js/pages/dashboard.js"></script>
+</body>
+</html>

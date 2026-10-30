@@ -1,0 +1,8 @@
+flowchart LR
+    MAN["Version manifest: app . content . chemistryData . safetyModel . dbSchema"]
+    ONLINE["Online: fetch manifest"] --> DL["Download + verify hashes"]
+    OFFLINE["Offline: MediaBundle / LAN push"] --> DL
+    DL --> MIG["Run DB migrations (schema-aware)"]
+    MIG --> ACT["Atomic activate (keep previous bundle)"]
+    ACT --> OK["last-known-good on rollback"]
+    ACT --> COMP["Compatibility matrix validation"]

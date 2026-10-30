@@ -1,0 +1,13 @@
+flowchart TB
+    subgraph OrgA["Organization A"]
+        MA[Memberships] --> DA[(Data rows orgId=A)]
+        CA["Classes / Assignments / Submissions"]
+    end
+    subgraph OrgB["Organization B"]
+        MB[Memberships] --> DBx[(Data rows orgId=B)]
+        CB["Classes / Assignments / Submissions"]
+    end
+    SRV["Site/Cloud Services"] -->|scope: PDP + row-level + crypto compartments| DA
+    SRV -->|scope enforced| DBx
+    SRV --> AUTHZ["Authorization (permission resolvers)"]
+    P["Platform Admin"] -->|telemetry/audit only, no cross-org content| SRV

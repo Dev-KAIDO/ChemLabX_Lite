@@ -1,0 +1,1510 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>ChemLabX TASK-003/004 Verification Harness</title>
+<style>
+  body { font-family: Consolas, monospace; background: #0d1117; color: #c9d1d9; margin: 24px; }
+  h1 { font-size: 18px; color: #58a6ff; }
+  .test { padding: 4px 0; border-bottom: 1px solid #21262d; }
+  .pass { color: #3fb950; } .fail { color: #f85149; } .skip { color: #d29922; }
+  .detail { color: #8b949e; font-size: 12px; }
+  #summary { margin-top: 16px; padding: 10px; border: 1px solid #30363d; }
+</style>
+</head>
+<body>
+<h1>ChemLabX TASK-003/004 Verification Harness</h1>
+<div id="results"></div>
+<div id="summary"></div>
+
+<script>
+/* ============================================================
+   SEED the legacy localStorage state BEFORE any app scripts run,
+   so the compat layer + migration see a realistic pre-TASK-003 state.
+   A run-unique marker distinguishes "fresh migration copied these keys"
+   from "migration reused, keys written afterwards via write-through".
+   ============================================================ */
+(function () {
+    var runId = 'r' + Date.now();
+    var records = {
+        'chemlabx_legacy_marker': { migratedLegacy: true, note: 'pre-existing key' },
+        'chemlabx_legacy_notes': { lessonId: 3, note: 'historical row without provenance' }
+    };
+    records['chemlabx_run_marker_' + runId] = { runId: runId };
+    for (var k in records) {
+        if (Object.prototype.hasOwnProperty.call(records, k)) {
+            window.localStorage.setItem(k, JSON.stringify(records[k]));
+        }
+    }
+    window.__HARNESS_RUN_ID__ = runId;
+})();
+</script>
+
+<script src="../js/core/i18n.js"></script>
+<script src="../js/core/versions.js"></script>
+<script src="../js/core/dataport.js"></script>
+<script src="../js/core/db.js"></script>
+<script src="../js/core/auth.js"></script>
+<script src="../js/domain/authorization.js"></script>
+<script src="../js/data/materials.js"></script>
+<script src="../js/data/reactions.js"></script>
+<script src="../js/data/achievements.js"></script>
+<script src="../js/domain/chemistry.js"></script>
+<script src="../js/domain/laboratory.js"></script>
+    <script src="../js/domain/safety.js"></script>
+    <script src="../js/domain/results.js"></script>
+    <script src="../js/domain/changejournal.js"></script>
+    <script src="../js/lab/engine.js"></script>
+    <script src="../js/pages/experiments.js"></script>
+    <script src="../js/domain/content.js"></script>
+    <script src="../js/data/content/manifest.js"></script>
+    <script src="../js/data/content/lessons.js"></script>
+    <script src="../js/data/content/quiz.js"></script>
+    <script src="../js/data/content/experiments.js"></script>
+    <script src="../js/domain/education.js"></script>
+
+<script>
+(function () {
+    'use strict';
+
+    var results = [];
+    var errors = [];
+    var runtimeErrors = [];
+    window.addEventListener('error', function (e) { runtimeErrors.push(String(e.message || e.error)); });
+    window.addEventListener('unhandledrejection', function (e) { runtimeErrors.push('rejection: ' + String(e && e.reason)); });
+
+    /* Keep virtual time occupied so real IndexedDB I/O always gets
+       event-loop turns before --dump-dom captures the page. */
+    var keepalive = setInterval(function () {}, 1);
+
+    function record(id, name, pass, detail) {
+        results.push({ id: id, name: name, pass: pass, detail: detail || '' });
+        render();
+    }
+    function render() {
+        var box = document.getElementById('results');
+        box.innerHTML = results.map(function (r) {
+            return '<div class="test ' + (r.pass ? 'pass' : 'fail') + '">' +
+                '<b>[' + r.id + ']</b> ' + r.name + ' — ' + (r.pass ? 'PASS' : 'FAIL') +
+                (r.detail ? ' <span class="detail">' + r.detail + '</span>' : '') + '</div>';
+        }).join('');
+        var pass = results.filter(function (r) { return r.pass; }).length;
+        var fail = results.length - pass;
+        var sum = document.getElementById('summary');
+        sum.innerHTML = '<b>SUMMARY:</b> ' + pass + ' PASS / ' + fail + ' FAIL / ' + results.length + ' TOTAL' +
+            (runtimeErrors.length ? ' <span class="fail">| runtimeErrors: ' + runtimeErrors.length + ' (see stderr/console)</span>' : '') +
+            '<br>' + JSON.stringify({ pass: pass, fail: fail, total: results.length, runtimeErrors: runtimeErrors.length, tests: results });
+    }
+
+    function waitFor(fn, timeout, label) {
+        return new Promise(function (resolve, reject) {
+            var t0 = Date.now();
+            (function poll() {
+                var r;
+                try { r = fn(); } catch (e) { return reject(e); }
+                if (r) return resolve(r);
+                if (Date.now() - t0 > (timeout || 8000)) return reject(new Error('timeout' + (label ? ' (' + label + ')' : '')));
+                setTimeout(poll, 50);
+            })();
+        });
+    }
+
+    async function fetchText(url) {
+        var res = await fetch(url);
+        return { status: res.status, text: await res.text() };
+    }
+
+    async function run() {
+        /* ---- A. Migration ---- */
+        try {
+            var runId = window.__HARNESS_RUN_ID__;
+            var runMarkerKey = 'chemlabx_run_marker_' + runId;
+            var runMarkerValue = { runId: runId };
+            await waitFor(function () {
+                return window.DataPort &&
+                    window.DataPort.status().ready &&
+                    (window.DataPort.status().migrated === true || window.DataPort.status().failures.length > 0);
+            }, 15000, 'dataPort ready + migration settled');
+            var st = window.DataPort.status();
+            record('A1', 'Migration completed (IndexedDB)', st.migrated === true, 'migrated=' + st.migrated + ' integrity=' + String(st.integrity));
+            record('A2', 'Migration health OK (no silent failure)', st.health === 'ok', 'health=' + st.health + ' lastError=' + String(st.lastError));
+
+            await window.DataPort.ensureMigrated(); /* ensure settled */
+            var migrations = await window.DataPort.meta.get('migrations');
+            var schema = await window.DataPort.meta.get('dbSchemaVersion');
+            var lastAt = await window.DataPort.meta.get('lastMigratedAt');
+            record('A3', 'Migration record persisted (steps/schema/timestamp)',
+                Array.isArray(migrations) && migrations.indexOf('v1') !== -1 && schema === 2 && !!lastAt,
+                'steps=' + JSON.stringify(migrations) + ' dbSchemaVersion=' + String(schema));
+
+            var markerLocal = JSON.parse(window.localStorage.getItem('chemlabx_legacy_marker') || 'null');
+            var markerIdb = await window.DataPort.get('chemlabx_legacy_marker');
+            var copiedOk = markerLocal && markerIdb && JSON.stringify(markerLocal) === JSON.stringify(markerIdb);
+            if (!copiedOk && window.DataPort.status().migrated) {
+                /* Reused profile: keys written after the original migration are only
+                   expected in IndexedDB once the write-through path forwards them. */
+                await window.DataPort.set(runMarkerKey, runMarkerValue);
+                var runMarkerIdb = await window.DataPort.get(runMarkerKey);
+                copiedOk = runMarkerIdb && JSON.stringify(runMarkerValue) === JSON.stringify(runMarkerIdb);
+                record('A4', 'Legacy key integrity: copy (fresh) or write-through (reused)', copiedOk,
+                    'copy=' + (copiedOk && markerIdb ? JSON.stringify(markerLocal) : 'n/a') + ' runKeyInIdb=' + (copiedOk && runMarkerIdb ? 'yes' : 'no'));
+            } else {
+                record('A4', 'Legacy key integrity: copied identical to IndexedDB', copiedOk,
+                    'local=' + JSON.stringify(markerLocal) + ' idb=' + JSON.stringify(markerIdb));
+            }
+
+            var usersLocal = JSON.parse(window.localStorage.getItem('chemlabx_users') || '{}');
+            var usersIdb = await window.DataPort.get('chemlabx_users');
+            record('A5', 'Integrity: seeded chemlabx_users copied identically',
+                usersLocal && usersIdb && JSON.stringify(usersLocal) === JSON.stringify(usersIdb),
+                'localKeys=' + Object.keys(usersLocal).length + ' idbKeys=' + Object.keys(usersIdb || {}).length);
+
+            record('A6', 'Migration is NON-DESTRUCTIVE (localStorage preserved)',
+                !!window.localStorage.getItem('chemlabx_legacy_marker') && !!window.localStorage.getItem('chemlabx_users'),
+                'localStorage keys still present');
+
+            var again = await window.DataPort.ensureMigrated();
+            record('A7', 'Migration idempotent (re-run reused)', again.reused === true, JSON.stringify(again));
+
+            var after = window.DataPort.status();
+            record('A8', 'No IndexedDB failures recorded', after.failures.length === 0,
+                'failures=' + after.failures.length + ' pendingWrites=' + after.pendingWrites);
+        } catch (e) {
+            record('A', 'Migration suite FAILED', false, String(e));
+        }
+
+        /* ---- B. IndexedDB DataPort ---- */
+        try {
+            await window.DataPort.set('chemlabx_test_roundtrip', { hello: 'idb', n: 42 });
+            var got = await window.DataPort.get('chemlabx_test_roundtrip');
+            record('B1', 'IndexedDB write/read round-trip', got && got.hello === 'idb' && got.n === 42, JSON.stringify(got));
+
+            var keys = await window.DataPort.list();
+            record('B2', 'IndexedDB list() includes written keys',
+                keys.indexOf('chemlabx_test_roundtrip') !== -1 && keys.indexOf('chemlabx_users') !== -1,
+                'count=' + keys.length);
+
+            var cs = window.CHLDB.storageStatus();
+            record('B3', 'Status observable via CHLDB.storageStatus()',
+                cs && cs.dataPort && cs.transitional === true && cs.mirror,
+                JSON.stringify({ transitional: cs.transitional, mirror: cs.mirror.health, idb: cs.dataPort.health }));
+        } catch (e) {
+            record('B', 'IndexedDB suite FAILED', false, String(e));
+        }
+
+        /* ---- C. CHLDB compatibility layer ---- */
+        try {
+            var all = window.CHLDB.users.all();
+            var emails = Object.keys(all).map(function (k) { return all[k].email; });
+            record('C1', 'CHLDB seed accounts present (compat cache)',
+                emails.indexOf('admin@chemlabx.com') !== -1 && emails.indexOf('student@chemlabx.com') !== -1,
+                emails.join(', '));
+
+            var before = window.CHLDB.get('test_c', 'none');
+            window.CHLDB.set('test_c', { v: 1 });
+            var after2 = window.CHLDB.get('test_c', 'none');
+            var localC = JSON.parse(window.localStorage.getItem('chemlabx_test_c') || 'null');
+            var idbC = await window.DataPort.get('chemlabx_test_c');
+            record('C2', 'CHLDB.set writes cache + localStorage mirror + IndexedDB',
+                after2 && after2.v === 1 && localC && localC.v === 1 && idbC && idbC.v === 1,
+                'cache=' + (after2 && after2.v) + ' ls=' + (localC && localC.v) + ' idb=' + (idbC && idbC.v));
+        } catch (e) {
+            record('C', 'Compatibility suite FAILED', false, String(e));
+        }
+
+        /* ---- D. Provenance ---- */
+        try {
+            var nid = 'prov_new_' + Date.now();
+            var row = window.CHLDB.submissions.upsert(nid, { assignmentId: 'a1', status: 'completed' });
+            var p = row.provenance;
+            record('D1', 'NEW submission stamped with provenance (7 keys, one shape)',
+                !!p && p.appVersion === '4.0.0-foundation' && p.schemaVersion === 2 &&
+                !!p.contentVersion && !!p.chemistryDataVersion && !!p.engineVersion &&
+                !!p.safetyModelVersion && !!p.savedAt,
+                p ? JSON.stringify(p) : 'no provenance');
+
+            var oid = 'prov_old_' + Date.now();
+            var c = window.CHLDB.submissions.all();
+            c[oid] = { assignmentId: 'a9', status: 'submitted', submittedAt: 1700000000000 }; /* old row, no provenance */
+            window.CHLDB.submissions.save(c); /* simulate historical record */
+            var updated = window.CHLDB.submissions.upsert(oid, { assignmentId: 'a9', status: 'graded' });
+            record('D2', 'OLD historical record NEVER mutated to add provenance',
+                !updated.provenance, 'provenance=' + JSON.stringify(updated.provenance));
+
+            var existing = window.CHLDB.submissions.getById(updated.id || oid);
+            record('D3', 'Stored old record still lacks provenance',
+                !!existing && !existing.provenance, 'present=' + !!existing);
+        } catch (e) {
+            record('D', 'Provenance suite FAILED', false, String(e));
+        }
+
+        /* ---- E. Fail-closed reactions ---- */
+        try {
+            var unknown = window.Lab.engine.findReaction(['Cu', 'Zn']);
+            record('E1', 'Unmatched mix resolves to null (unknown-result), never default',
+                unknown === null, 'result=' + JSON.stringify(unknown));
+
+            var known = window.Lab.engine.findReaction(['Na', 'H2O']);
+            record('E2', 'Validated mix still resolves',
+                known !== null && known.equation, known ? (known.equation || 'no equation') : 'null');
+
+            var engineSrc = await fetchText('/js/lab/engine.js');
+            record('E3', 'engine.js contains explicit unknown-result handling',
+                engineSrc.text.indexOf("unknown-result") !== -1 && engineSrc.text.indexOf("not-in-validated-dataset") !== -1,
+                '');
+
+            record('E4', 'engine.js no longer falls back to reactions[default]',
+                engineSrc.text.indexOf("reactions['default']") === -1 && engineSrc.text.indexOf("reactions[\"default\"]") === -1, '');
+        } catch (e) {
+            record('E', 'Fail-closed suite FAILED', false, String(e));
+        }
+
+        /* ---- F. Safety achievements ---- */
+        try {
+            var ids = window.achievementDB.map(function (a) { return a.id; });
+            record('F1', 'New safe achievements present',
+                ids.indexOf('valid_experiment') !== -1 && ids.indexOf('safety_response') !== -1 && ids.indexOf('measurements') !== -1,
+                ids.join(', '));
+            record('F2', 'Danger rewards removed',
+                ids.indexOf('danger_zone') === -1 && ids.indexOf('three_danger') === -1 && ids.indexOf('temp_80') === -1,
+                '');
+
+            /* Lab.state + helpers live in js/lab/lab.js (lab page controller, not loaded
+               here). Provide minimal engine-facing stubs so checkAchievements() can run. */
+            window.Lab.state = {
+                xp: 0, experimentCount: 0, validExperiments: 0, dangerousReactions: 0,
+                toolsUsed: {}, unlockedAchievements: {}, experimentsDone: [],
+                highTempWarning: false, cooledAfterWarning: false, measurementsTaken: false
+            };
+            window.Lab.toast = function () {};
+            window.Lab.addLog = function () {};
+            window.Lab.updateUI = function () {};
+            window.Lab.saveProgress = function () {};
+            window.Lab.addXP = function () {};
+            window.Lab.state.measurementsTaken = true;
+            window.Lab.engine.checkAchievements();
+            window.Lab.state.validExperiments = 1;
+            window.Lab.engine.checkAchievements();
+            window.Lab.state.highTempWarning = true;
+            window.Lab.state.cooledAfterWarning = true;
+            window.Lab.engine.checkAchievements();
+            var ua = window.Lab.state.unlockedAchievements;
+            record('F3', 'valid_experiment / safety_response / measurements award correctly',
+                ua['valid_experiment'] === true && ua['safety_response'] === true && ua['measurements'] === true,
+                JSON.stringify({ valid_experiment: ua['valid_experiment'], safety_response: ua['safety_response'], measurements: ua['measurements'] }));
+        } catch (e) {
+            record('F', 'Achievements suite FAILED', false, String(e));
+        }
+
+        /* ---- G. Dead-code cleanup (HTTP-level) ---- */
+        try {
+            var legacyPaths = ['/js/app.js', '/js/data.js', '/js/quiz.js', '/css/style.css'];
+            for (var i = 0; i < legacyPaths.length; i++) {
+                var resp = await fetchText(legacyPaths[i]);
+                (function (p, s) {
+                    record('G1_' + i, 'Legacy deleted: 404 for ' + p, s === 404, 'status=' + s);
+                })(legacyPaths[i], resp.status);
+            }
+
+            var pages = ['index.html', 'login.html', 'register.html', 'dashboard.html', 'lab.html', 'experiments.html', 'lessons.html', 'quiz.html', 'profile.html', 'admin.html'];
+            for (var j = 0; j < pages.length; j++) {
+                var pr = await fetchText('/' + pages[j]);
+                var hasVersions = pr.text.indexOf('js/core/versions.js') !== -1;
+                var hasDataPort = pr.text.indexOf('js/core/dataport.js') !== -1;
+                var noLegacy = pr.text.indexOf('js/app.js') === -1 && pr.text.indexOf('js/data.js') === -1 && pr.text.indexOf('js/quiz.js') === -1 && pr.text.indexOf('css/style.css') === -1;
+                (function (p, a, b, c) {
+                    record('G2_' + j, 'Page ' + p + ' loads versions+dataport, no legacy refs',
+                        a && b && c, 'versions=' + a + ' dataport=' + b + ' noLegacy=' + c);
+                })(pages[j], hasVersions, hasDataPort, noLegacy);
+            }
+        } catch (e) {
+            record('G', 'Cleanup suite FAILED', false, String(e));
+        }
+
+        /* ---- H. TASK-004 Chemistry & Laboratory domain ---- */
+        try {
+            record('H1', 'Chemistry + Laboratory domain modules loaded',
+                typeof window.Chemistry === 'object' && typeof window.Chemistry.determine === 'function' &&
+                typeof window.Laboratory === 'object' && typeof window.Laboratory.normalizeState === 'function', '');
+
+            var chem = window.Chemistry;
+            var lab = window.Laboratory;
+            var dv = window.CHL.versions.CHEMISTRY_DATA_VERSION;
+            var ev = window.CHL.versions.ENGINE_VERSION;
+
+            var comboChecks = 0;
+            var expectedResolved = 0;
+            var unmatchedNotes = [];
+            Object.keys(window.Lab.engine.experiments).forEach(function (id) {
+                var mats = window.Lab.engine.experiments[id];
+                var r = chem.determine({ materials: mats.map(function (m) { return { id: m }; }), temperature: 25, ph: 7 }, dv, ev);
+                if (chem.lookupReaction(mats)) {
+                    expectedResolved++;
+                    if (r.status === 'resolved' && r.products.length >= 1 && r.reaction && r.reaction.equation) comboChecks++;
+                    else unmatchedNotes.push(id + '=WRONG(' + r.status + ')');
+                } else {
+                    if (r.status === 'unknown-result' && r.reason === 'not-in-validated-dataset') unmatchedNotes.push(id + '=unknown(fail-closed OK, no record)');
+                    else unmatchedNotes.push(id + '=WRONG(' + r.status + ')');
+                }
+            });
+            record('H2', 'Registry combos resolve; record-less combo fails closed (no fabrication)',
+                comboChecks === expectedResolved && expectedResolved === 14,
+                comboChecks + '/' + expectedResolved + ' resolved; notes: ' + (unmatchedNotes.join(', ') || 'none'));
+
+            var pairChecks = 0;
+            var pairTotals = Object.keys(window.reactions).filter(function (k) { return k !== 'default'; }).length;
+            Object.keys(window.reactions).forEach(function (key) {
+                if (key === 'default') return;
+                var ids = key.split(',');
+                var rec = chem.lookupReaction(ids);
+                var r = chem.determine({ materials: ids.map(function (m) { return { id: m }; }), temperature: 25, ph: 7 }, dv, ev);
+                if (rec && r.status === 'resolved' && r.reaction.id === key) pairChecks++;
+            });
+            record('H3', 'Every validated reaction key resolves (lookup + determine, id round-trip)',
+                pairChecks === pairTotals, pairChecks + '/' + pairTotals);
+
+            var unk = chem.determine({ materials: [{ id: 'Cu' }, { id: 'Zn' }], temperature: 25, ph: 7 }, dv, ev);
+            record('H4', 'Unmatched mix -> unknown-result, reason, no products/derived/xp',
+                unk.status === 'unknown-result' && unk.reason === 'not-in-validated-dataset' &&
+                !unk.products && !unk.derived && !unk.reaction,
+                JSON.stringify(unk));
+
+            var input = { materials: [{ id: 'Na', qty: 5, unit: 'ml' }, { id: 'H2O', qty: 10, unit: 'ml' }], temperature: 25, ph: 7 };
+            var d1 = chem.determine(input, dv, ev);
+            var d2 = chem.determine(input, dv, ev);
+            var stable = true;
+            for (var iter = 0; iter < 10; iter++) if (JSON.stringify(chem.determine(input, dv, ev)) !== JSON.stringify(d1)) stable = false;
+            record('H5', 'Determinism: identical input -> identical output (10 runs), no shared result identity',
+                stable && d1 !== d2, '');
+
+            var pk = unk.provenance, rk = d1.provenance;
+            record('H6', 'Provenance stamped on resolved + unknown results (chemistry+engine versions)',
+                rk.chemistryDataVersion === dv && rk.engineVersion === ev &&
+                pk.chemistryDataVersion === dv && pk.engineVersion === ev &&
+                !rk.savedAt,
+                JSON.stringify(rk));
+
+            var dSrc = await fetchText('/js/domain/chemistry.js');
+            var lSrc = await fetchText('/js/domain/laboratory.js');
+            var dirty = /document\.|window\.alert|innerHTML|Math\.random/.test(dSrc.text + lSrc.text);
+            record('H7', 'Domain sources are UI-free (no document/alert/innerHTML/random)',
+                !dirty && dSrc.status === 200 && lSrc.status === 200, '');
+
+            var fakeState = {
+                benchItems: [
+                    { id: 'b1', material: 'Na', name: 'Sodium', formula: 'Na', color: '#C0C0C0', qty: 5, unit: 'ml', element: {} },
+                    { id: 'b2', material: 'H2O', name: 'Water', formula: 'H2O', color: '#87CEEB', qty: 10, unit: 'ml', element: {} }
+                ],
+                temperature: 25.5, ph: 7.2
+            };
+            var norm = lab.normalizeState(fakeState);
+            var hasDom = norm.materials.some(function (m) { return typeof m.element !== 'undefined' || typeof m.name !== 'undefined'; });
+            record('H8', 'Laboratory.normalizeState strips DOM refs, emits only id/qty/unit',
+                !hasDom && norm.materials.length === 2 && norm.materials[0].id === 'Na' &&
+                norm.materials[0].qty === 5 && norm.temperature === 25.5 && norm.ph === 7.2,
+                JSON.stringify(norm));
+
+            var nd = chem.determine(norm, dv, ev);
+            var hasQty = nd.reactants.some(function (m) { return m.id === 'Na' && m.qty === 5 && m.unit === 'ml'; });
+            record('H9', 'Resolved reactants carry qty/unit from the normalized snapshot',
+                hasQty && nd.status === 'resolved', JSON.stringify(nd.reactants));
+
+            var unknownNorm = chem.determine(lab.normalizeState({ benchItems: [], temperature: 20, ph: 7 }), dv, ev);
+            record('H10', 'Empty/invalid bench -> unknown-result (fail closed)',
+                unknownNorm.status === 'unknown-result' && unknownNorm.reason === 'not-in-validated-dataset', '');
+        } catch (e) {
+            record('H', 'TASK-004 domain suite FAILED', false, String(e));
+        }
+
+        /* ---- H.2 Existing lab behavior exercised end-to-end (domain -> session) ---- */
+        try {
+            window.Lab.saveSnapshot = function () {};
+            window.Lab.checkAchievements = function () {};
+            if (typeof window.t !== 'function') window.t = function (ar, en) { return en != null ? en : ar; };
+            window.Lab.state.benchItems = [{ material: 'Na' }, { material: 'H2O' }];
+            window.Lab.state.temperature = 25;
+            window.Lab.state.ph = 7;
+            window.Lab.state.isReacting = false;
+            window.Lab.state.lastResult = null;
+            window.Lab.state.lastDetermination = null;
+            window.Lab.state.experimentCount = 0;
+            window.Lab.state.validExperiments = 0;
+            window.Lab.state.experimentsDone = [];
+            var hMixes = window.Lab.engine.performMix;
+            for (var hi = 0; hi < 3; hi++) {
+                hMixes();
+                if (hi < 2) { window.Lab.state.isReacting = false; window.Lab.state.lastResult = null; window.Lab.state.lastDetermination = null; }
+            }
+            record('H11', 'performMix end-to-end: known mix -> ok + provenance + XP/counters (3 mixes, no throw)',
+                window.Lab.state.lastResult && window.Lab.state.lastResult.status === 'ok' &&
+                window.Lab.state.lastDetermination && window.Lab.state.lastDetermination.status === 'resolved' &&
+                window.Lab.state.lastDetermination.provenance.chemistryDataVersion === dv &&
+                window.Lab.state.experimentCount === 3 && window.Lab.state.validExperiments === 3 &&
+                window.Lab.state.temperature === 25 + 45 * 3 && window.Lab.state.ph === 14,
+                'lastResult=' + JSON.stringify(window.Lab.state.lastResult) +
+                ' temp=' + window.Lab.state.temperature + ' ph=' + window.Lab.state.ph +
+                ' experimentCount=' + window.Lab.state.experimentCount);
+
+            window.Lab.state.benchItems = [{ material: 'Cu' }, { material: 'Zn' }];
+            window.Lab.state.isReacting = false;
+            window.Lab.state.lastResult = null;
+            window.Lab.state.lastDetermination = null;
+            window.Lab.engine.performMix();
+            record('H12', 'performMix end-to-end: unmatched mix -> unknown-result, nothing awarded',
+                window.Lab.state.lastResult && window.Lab.state.lastResult.status === 'unknown-result' &&
+                window.Lab.state.lastResult.reason === 'not-in-validated-dataset' &&
+                window.Lab.state.lastDetermination && window.Lab.state.lastDetermination.status === 'unknown-result' &&
+                window.Lab.state.experimentCount === 3 && window.Lab.state.validExperiments === 3,
+                'lastResult=' + JSON.stringify(window.Lab.state.lastResult) +
+                ' experimentCount=' + window.Lab.state.experimentCount + ' validExperiments=' + window.Lab.state.validExperiments);
+        } catch (e) {
+            record('H2', 'Lab-behavior suite FAILED', false, String(e));
+        }
+
+        /* ---- S. Safety Engine (TASK-005) ---- */
+        try {
+            var SH = window.Safety;
+            var sSrcRaw = await fetchText('/js/domain/safety.js');
+            var sDirty = /document\.|window\.alert|alert\(|innerHTML|Math\.random|reactions\[/.test(sSrcRaw.text);
+            record('S1', 'SafetyEngine loaded + RULES_VERSION() present',
+                typeof SH === 'object' && typeof SH.evaluate === 'function' &&
+                typeof SH.RULES_VERSION === 'function' && SH.RULES_VERSION() === 'prototype-rules-v1',
+                'rules=' + (typeof SH.RULES_VERSION === 'function' ? SH.RULES_VERSION() : 'missing'));
+
+            /* helper: build a determination for a given pair through the real engine */
+            function detFor(ids, temp, ph) {
+                var snap = { materials: ids.map(function (m) { return { id: m }; }), temperature: temp, ph: ph };
+                return window.Chemistry.determine(snap, dv, ev);
+            }
+            function sessFor(ids, temp, ph) {
+                return { materials: ids.map(function (m) { return { id: m }; }), temperature: temp, ph: ph };
+            }
+
+            /* S2: known safe + caution + known dangerous */
+            var sSafe = SH.evaluate(sessFor(['NaCl', 'H2O'], 25, 7), detFor(['NaCl', 'H2O'], 25, 7));
+            var sCaution = SH.evaluate(sessFor(['CuSO4', 'Zn'], 25, 7), detFor(['CuSO4', 'Zn'], 25, 7));
+            var sDanger = SH.evaluate(sessFor(['Na', 'H2O'], 25, 7), detFor(['Na', 'H2O'], 25, 7));
+            var sDanger2 = SH.evaluate(sessFor(['KMnO4', 'H2O2'], 25, 7), detFor(['KMnO4', 'H2O2'], 25, 7));
+            record('S2', 'Known safe -> ok/allow/reward; caution -> warn/reward; known dangerous -> danger/warn/no-reward',
+                sSafe.status === 'ok' && sSafe.decision === 'allow' && sSafe.gate.allowReward === true &&
+                sSafe.gate.allowPresentation === true &&
+                sCaution.status === 'caution' && sCaution.decision === 'warn' && sCaution.gate.allowReward === true &&
+                sDanger.status === 'danger' && sDanger.decision === 'warn' &&
+                sDanger.gate.allowReward === false && sDanger.gate.allowPresentation === true &&
+                sDanger2.status === 'danger' && sDanger2.gate.allowReward === false,
+                'safe=' + sSafe.status + ' caution=' + sCaution.status + ' danger(Na)=' + sDanger.status + ' danger(KMnO4)=' + sDanger2.status);
+
+            /* S3: unknown material in a resolved session -> never safe, block,
+                 UNKNOWN_MATERIAL_V1 (session carries the unknown id while the
+                 determination is resolved for a known reaction) */
+            var sUnknownMat = SH.evaluate(sessFor(['Qq', 'H2O'], 25, 7), detFor(['NaCl', 'H2O'], 25, 7));
+            record('S3', 'Unknown material -> not ok, block, reason present',
+                sUnknownMat.status !== 'ok' && sUnknownMat.decision === 'block' &&
+                sUnknownMat.gate.allowReward === false &&
+                sUnknownMat.reasons.some(function (r) { return r.code === 'UNKNOWN_MATERIAL_V1'; }),
+                'status=' + sUnknownMat.status + ' reasons=' + JSON.stringify(sUnknownMat.reasons.map(function (r) { return r.code; })));
+
+            /* S4: unknown reaction -> unsupported/block, UNMATCHED_REACTION_V1 */
+            var unkDet = window.Chemistry.determine(sessFor(['Cu', 'Zn'], 25, 7), dv, ev);
+            var sUnkReact = SH.evaluate(sessFor(['Cu', 'Zn'], 25, 7), unkDet);
+            record('S4', 'Unknown reaction -> unsupported/block with UNMATCHED_REACTION_V1',
+                sUnkReact.status === 'unsupported' && sUnkReact.decision === 'block' &&
+                sUnkReact.gate.allowReward === false &&
+                sUnkReact.reasons.some(function (r) { return r.code === 'UNMATCHED_REACTION_V1'; }),
+                'status=' + sUnkReact.status + ' reasons=' + JSON.stringify(sUnkReact.reasons.map(function (r) { return r.code; })));
+
+            /* S5: missing material metadata -> never ok, MISSING_META_V1 surfaced.
+                 Stub Chemistry.material(NaCl) -> a record WITHOUT state (in-DB but
+                 metadata missing) while the resolved NaCl+H2O is otherwise safe. */
+            var origMat5 = window.Chemistry.material;
+            window.Chemistry.material = function (id) {
+                if (id === 'NaCl') return { name: 'Sodium Chloride', nameEn: 'Sodium Chloride', formula: 'NaCl', color: '#FFFFFF', type: 'salt' };
+                return origMat5(id);
+            };
+            var sMissing = SH.evaluate(sessFor(['NaCl', 'H2O'], 25, 7), detFor(['NaCl', 'H2O'], 25, 7));
+            window.Chemistry.material = origMat5;
+            record('S5', 'Missing material metadata -> never ok, unknown state surfaced',
+                sMissing.status !== 'ok' &&
+                sMissing.reasons.some(function (r) { return r.code === 'MISSING_META_V1'; }),
+                'status=' + sMissing.status + ' confidence=' + sMissing.confidence +
+                ' reasons=' + JSON.stringify(sMissing.reasons.map(function (r) { return r.code; })));
+
+            /* S6: contradictory metadata -> conservative + CONTRADICT_META_V1 + low confidence.
+                 Stub Chemistry.material(Na) as 'safe' while the Na+H2O reaction is
+                 marked dangerous -> reaction-vs-material contradiction. Restore after. */
+            var origMat = window.Chemistry.material;
+            window.Chemistry.material = function (id) {
+                if (id === 'Na') return { name: 'Sodium', nameEn: 'Sodium', formula: 'Na', color: '#C0C0C0', type: 'alkali', state: 'safe' };
+                return origMat(id);
+            };
+            var sContra = SH.evaluate(sessFor(['Na', 'H2O'], 25, 7), detFor(['Na', 'H2O'], 25, 7));
+            window.Chemistry.material = origMat;
+            record('S6', 'Contradictory metadata -> conservative (not ok) + CONTRADICT_META_V1 + low confidence',
+                sContra.status !== 'ok' && sContra.confidence === 'low' &&
+                sContra.reasons.some(function (r) { return r.code === 'CONTRADICT_META_V1'; }),
+                'status=' + sContra.status + ' confidence=' + sContra.confidence +
+                ' reasons=' + JSON.stringify(sContra.reasons.map(function (r) { return r.code; })));
+
+            /* S7: determinism + distinct identity, 10 runs */
+            var sFirst = SH.evaluate(sessFor(['Na', 'H2O'], 25, 7), detFor(['Na', 'H2O'], 25, 7));
+            var sDeterministic = true;
+            var sDistinct = true;
+            for (var sIter = 0; sIter < 10; sIter++) {
+                var sRun = SH.evaluate(sessFor(['Na', 'H2O'], 25, 7), detFor(['Na', 'H2O'], 25, 7));
+                if (JSON.stringify(sRun) !== JSON.stringify(sFirst)) sDeterministic = false;
+                if (sRun === sFirst) sDistinct = false;
+            }
+            record('S7', 'Safety determinism (10 runs deep-equal, distinct instances)',
+                sDeterministic && sDistinct, '');
+
+            /* S8: provenance on result */
+            record('S8', 'Safety provenance (safetyModelVersion, rulesVersion, consumed)',
+                sDanger.provenance.safetyModelVersion === 'prototype-rules-v1' &&
+                sDanger.provenance.rulesVersion === 'prototype-rules-v1' &&
+                sDanger.provenance.consumed && sDanger.provenance.consumed.sessionHash &&
+                sDanger.provenance.consumed.chemistryDataVersion === dv &&
+                !sDanger.provenance.savedAt,
+                JSON.stringify(sDanger.provenance));
+
+            /* S9: purity of safety.js source */
+            record('S9', 'Safety domain source is pure (no document/alert/innerHTML/random/reactions[)',
+                !sDirty && sSrcRaw.status === 200, 'dirty=' + sDirty);
+
+            /* S10: engine integration — lastSafetyAssessment set; dangerous reaction
+                 does not award XP or increment validExperiments */
+            window.Lab.state.benchItems = [{ material: 'Na' }, { material: 'H2O' }];
+            window.Lab.state.temperature = 25;
+            window.Lab.state.ph = 7;
+            window.Lab.state.xp = 0;
+            window.Lab.state.isReacting = false;
+            window.Lab.state.lastResult = null;
+            window.Lab.state.lastDetermination = null;
+            window.Lab.state.lastSafetyAssessment = null;
+            window.Lab.state.experimentCount = 0;
+            window.Lab.state.validExperiments = 0;
+            window.Lab.state.dangerousReactions = 0;
+            window.Lab.state.experimentsDone = [];
+            window.Lab.addXP = function (n) { window.Lab.state.xp += n; }; /* stub, no UI */
+            window.Lab.engine.performMix();
+            var dangerAssessment = window.Lab.state.lastSafetyAssessment;
+            record('S10', 'Engine integration: lastSafetyAssessment set; dangerous mix -> no XP, temp/pH mutated, counters reflect presentation',
+                !!dangerAssessment && window.Lab.state.xp === 0 &&
+                window.Lab.state.experimentCount === 1 && window.Lab.state.validExperiments === 1 &&
+                window.Lab.state.dangerousReactions === 1 &&
+                window.Lab.state.temperature === 25 + 45 && window.Lab.state.ph === 11.5,
+                'xp=' + window.Lab.state.xp + ' expCount=' + window.Lab.state.experimentCount +
+                ' valid=' + window.Lab.state.validExperiments + ' danger=' + window.Lab.state.dangerousReactions +
+                ' temp=' + window.Lab.state.temperature + ' ph=' + window.Lab.state.ph);
+
+            /* S10b: blocked mix (unknown reaction) leaves temperature/pH/XP/counters untouched */
+            window.Lab.state.benchItems = [{ material: 'Cu' }, { material: 'Zn' }];
+            window.Lab.state.isReacting = false;
+            window.Lab.state.lastResult = null;
+            window.Lab.state.lastDetermination = null;
+            window.Lab.state.lastSafetyAssessment = null;
+            window.Lab.engine.performMix();
+            record('S10b', 'Blocked mix (unknown) does not mutate temperature/pH/XP/counters',
+                window.Lab.state.temperature === 70 && window.Lab.state.ph === 11.5 &&
+                window.Lab.state.xp === 0 && window.Lab.state.experimentCount === 1 &&
+                window.Lab.state.validExperiments === 1,
+                'temp=' + window.Lab.state.temperature + ' ph=' + window.Lab.state.ph +
+                ' xp=' + window.Lab.state.xp + ' expCount=' + window.Lab.state.experimentCount);
+        } catch (e) {
+            record('S', 'TASK-005 Safety suite FAILED', false, String(e));
+        }
+
+        /* ---- R. Result Records (TASK-006) ---- */
+        try {
+            var RES = window.Results;
+            function rdetFor(ids, temp, ph) {
+                return window.Chemistry.determine({ materials: ids.map(function (m) { return { id: m }; }), temperature: temp, ph: ph }, dv, ev);
+            }
+            function rsessFor(ids, temp, ph) {
+                return { materials: ids.map(function (m) { return { id: m }; }), temperature: temp, ph: ph };
+            }
+
+            /* capture counters/logs before any persistence in this block */
+            var rExpBefore = window.Lab.state.experimentsDone.slice();
+            var rCntBefore = window.Lab.state.experimentCount;
+            var rValidBefore = window.Lab.state.validExperiments;
+            var rDangBefore = window.Lab.state.dangerousReactions;
+            var rXpBefore = window.Lab.state.xp;
+
+            record('R1', 'Results module loaded + cap/rules version',
+                typeof RES === 'object' && typeof RES.build === 'function' &&
+                typeof RES.persist === 'function' && typeof RES.list === 'function' &&
+                RES.MAX_RECORDS === 100 && RES.RULES_VERSION() === 'prototype-result-records-v1',
+                'rules=' + (typeof RES.RULES_VERSION === 'function' ? RES.RULES_VERSION() : 'missing') + ' max=' + RES.MAX_RECORDS);
+
+            /* safe result persists */
+            var rDetSafe = rdetFor(['NaCl', 'H2O'], 25, 7);
+            var rSafSt = window.Safety.evaluate(rsessFor(['NaCl', 'H2O'], 25, 7), rDetSafe);
+            var rSaf = RES.build({ id: 'rsafe', session: rsessFor(['NaCl', 'H2O'], 25, 7), determination: rDetSafe, safety: rSafSt });
+            RES.persist(rSaf);
+            record('R2', 'Resolved safe result persists (ok/allow/reward)',
+                !!RES.all().rsafe && RES.all().rsafe.status === 'ok' &&
+                RES.all().rsafe.decision === 'allow' && RES.all().rsafe.rewarded === true,
+                'status=' + (RES.all().rsafe ? RES.all().rsafe.status : 'missing'));
+
+            /* caution result persists */
+            var rDetCau = rdetFor(['CuSO4', 'Zn'], 25, 7);
+            var rCauSt = window.Safety.evaluate(rsessFor(['CuSO4', 'Zn'], 25, 7), rDetCau);
+            var rCau = RES.build({ id: 'rcaution', session: rsessFor(['CuSO4', 'Zn'], 25, 7), determination: rDetCau, safety: rCauSt });
+            RES.persist(rCau);
+            record('R3', 'Caution result persists (caution/warn/reward)',
+                !!RES.all().rcaution && RES.all().rcaution.status === 'caution' &&
+                RES.all().rcaution.decision === 'warn' && RES.all().rcaution.rewarded === true,
+                'status=' + (RES.all().rcaution ? RES.all().rcaution.status : 'missing'));
+
+            /* dangerous result persists, rewarded:false */
+            var rDetDang = rdetFor(['Na', 'H2O'], 25, 7);
+            var rDangSt = window.Safety.evaluate(rsessFor(['Na', 'H2O'], 25, 7), rDetDang);
+            var rDang = RES.build({ id: 'rdanger', session: rsessFor(['Na', 'H2O'], 25, 7), determination: rDetDang, safety: rDangSt });
+            RES.persist(rDang);
+            record('R4', 'Dangerous result persists with rewarded:false',
+                !!RES.all().rdanger && RES.all().rdanger.status === 'danger' &&
+                RES.all().rdanger.decision === 'warn' &&
+                RES.all().rdanger.rewarded === false && RES.all().rdanger.gate.allowReward === false,
+                'status=' + (RES.all().rdanger ? RES.all().rdanger.status : 'missing') +
+                ' rewarded=' + (RES.all().rdanger ? RES.all().rdanger.rewarded : 'n/a'));
+
+            record('R5', 'Persisting dangerous result does NOT award XP',
+                window.Lab.state.xp === rXpBefore, 'xp=' + window.Lab.state.xp + ' (before=' + rXpBefore + ')');
+
+            /* blocked/unknown NOT persisted */
+            var rDetBlk = rdetFor(['Cu', 'Zn'], 25, 7);
+            var rBlkSt = window.Safety.evaluate(rsessFor(['Cu', 'Zn'], 25, 7), rDetBlk);
+            var rBlk = RES.build({ id: 'rblocked', session: rsessFor(['Cu', 'Zn'], 25, 7), determination: rDetBlk, safety: rBlkSt });
+            var rBlkOut = RES.persist(rBlk);
+            record('R6', 'Blocked/unknown result is NOT persisted',
+                RES.shouldPersist(rBlkSt) === false && rBlkOut === null && !RES.all().rblocked,
+                'shouldPersist=' + RES.shouldPersist(rBlkSt) + ' persisted=' + (rBlkOut !== null) + ' present=' + !!RES.all().rblocked);
+
+            /* provenance fields */
+            var rProv = RES.all().rdanger.provenance;
+            record('R7', 'Result carries required provenance fields',
+                rProv && rProv.savedAt && rProv.appVersion && rProv.schemaVersion === 2 &&
+                rProv.chemistryDataVersion === dv && rProv.engineVersion === ev &&
+                rProv.safetyModelVersion === 'prototype-rules-v1' && rProv.resultsVersion === 'prototype-result-records-v1' &&
+                RES.all().rdanger.hc && RES.all().rdanger.hc.determination && RES.all().rdanger.hc.safety &&
+                RES.all().rdanger.versions && RES.all().rdanger.versions.chemistryDataVersion === dv,
+                JSON.stringify(rProv));
+
+            /* IndexedDB survival (async, poll until the queued/in-flight write lands) */
+            var rIdbSurvived = false;
+            try {
+                if (window.DataPort && window.DataPort.flush) { await window.DataPort.flush().catch(function () { return false; }); }
+                for (var ir = 0; ir < 30 && !rIdbSurvived; ir++) {
+                    await new Promise(function (res) { setTimeout(res, 30); });
+                    var rKv = await window.DataPort.get('chemlabx_results').catch(function () { return null; });
+                    if (rKv && rKv.rdanger) rIdbSurvived = true;
+                }
+            } catch (e) { rIdbSurvived = false; }
+            record('R8', 'Result survives through IndexedDB (DataPort KV after flush)',
+                rIdbSurvived, 'rdanger-in-indexeddb=' + rIdbSurvived);
+
+            /* cap / eviction: deterministic baseline */
+            var rVerObj = RES.build({}).versions;
+            window.CHLDB.results.save({});
+            for (var ci = 0; ci < 100; ci++) {
+                var cn = ci < 10 ? '0' + ci : String(ci);
+                RES.persist({ id: 'cap' + cn, gate: { allowPresentation: true, allowReward: true }, status: 'ok', decision: 'allow', reactionKey: 'A+B', materials: [], conditionsIn: {}, versions: rVerObj, hc: { determination: null, safety: null } });
+            }
+            record('R9', 'Insert 100 records -> exactly 100 present',
+                RES.count() === 100, 'count=' + RES.count());
+
+            RES.persist({ id: 'capX', gate: { allowPresentation: true, allowReward: true }, status: 'ok', decision: 'allow', reactionKey: 'X+Y', materials: [], conditionsIn: {}, versions: rVerObj, hc: { determination: null, safety: null } });
+            record('R10', 'Inserting 101st keeps 100 and evicts oldest (cap00 first)',
+                RES.count() === 100 && !RES.all().cap00 && !!RES.all().capX,
+                'count=' + RES.count() + ' has cap00=' + !!RES.all().cap00 + ' has capX=' + !!RES.all().capX);
+
+            RES.persist({ id: 'capY', gate: { allowPresentation: true, allowReward: true }, status: 'ok', decision: 'allow', reactionKey: 'X+Y', materials: [], conditionsIn: {}, versions: rVerObj, hc: { determination: null, safety: null } });
+            record('R11', 'Oldest-first eviction is deterministic (cap01 evicted next, newest retained)',
+                RES.count() === 100 && !RES.all().cap01 && !!RES.all().capY,
+                'count=' + RES.count() + ' has cap01=' + !!RES.all().cap01 + ' has capY=' + !!RES.all().capY);
+
+            /* counters/logs unchanged across all persistence */
+            record('R12', 'experimentsDone[] unchanged by result persistence',
+                JSON.stringify(window.Lab.state.experimentsDone) === JSON.stringify(rExpBefore),
+                'exp=' + JSON.stringify(window.Lab.state.experimentsDone));
+            record('R13', 'Existing counters unchanged by result persistence',
+                window.Lab.state.experimentCount === rCntBefore &&
+                window.Lab.state.validExperiments === rValidBefore &&
+                window.Lab.state.dangerousReactions === rDangBefore &&
+                window.Lab.state.xp === rXpBefore,
+                'expCount=' + window.Lab.state.experimentCount + ' valid=' + window.Lab.state.validExperiments +
+                ' danger=' + window.Lab.state.dangerousReactions + ' xp=' + window.Lab.state.xp);
+
+            /* SW cache name is version-bumped whenever shell assets change, so
+               assert the shape (chemlabx-vN) instead of pinning an old number;
+               results.js must always stay in APP_SHELL. */
+            var rSw = await fetchText('/sw.js');
+            var swCacheName = (rSw.text.match(/const CACHE = '([^']+)'/) || [])[1] || '';
+            record('R14', 'SW cache (' + (swCacheName || '?') + ') contains results.js in APP_SHELL',
+                rSw.status === 200 && /^chemlabx-v\d+$/.test(swCacheName) &&
+                rSw.text.indexOf('js/domain/results.js') !== -1,
+                'cache=' + (swCacheName || 'none') + ' hasResults=' + (rSw.text.indexOf('js/domain/results.js') !== -1));
+        } catch (e) {
+            record('R', 'TASK-006 Results suite FAILED', false, String(e));
+        }
+
+        /* ---- TASK-007: chemistry data model validation & counts ---- */
+        try {
+            var rxKeysT7 = Object.keys(window.reactions);
+            var noDefaultT7 = rxKeysT7.indexOf('default') === -1;
+            var rxCountT7 = rxKeysT7.length;
+            var expCountT7 = (window.CHL && typeof window.CHL.experimentCount === 'number') ? window.CHL.experimentCount : -1;
+            var dichromateLookupT7 = window.Chemistry ? window.Chemistry.lookupReaction(['K2Cr2O7', 'HCl']) : null;
+            record('T1', 'No dead default reaction in validated dataset (28 keys)',
+                noDefaultT7 && rxCountT7 === 28,
+                'rx=' + rxCountT7 + ' hasDefault=' + (!noDefaultT7));
+            record('T2', 'CHL.experimentCount exposed by experiments.js equals 14 retained experiments',
+                expCountT7 === 14,
+                'count=' + expCountT7);
+            record('T3', 'Dashboard uses catalog count (14), not reaction count (28)',
+                expCountT7 === 14 && rxCountT7 === 28 && expCountT7 !== rxCountT7,
+                'exp=' + expCountT7 + ' rx=' + rxCountT7);
+            record('T4', 'K2Cr2O7+HCl excluded: no fabricated reaction, catalog count 14',
+                expCountT7 === 14 && dichromateLookupT7 === null,
+                'lookup=' + JSON.stringify(dichromateLookupT7));
+        } catch (e) {
+            record('T', 'TASK-007 chemistry validation suite FAILED', false, String(e));
+        }
+
+        /* ---- TASK-008: Content domain, versioned content packs, manifest ---- */
+        try {
+            var CD = window.CHL && window.CHL.content;
+            var MAN = window.CHL && window.CHL.contentManifest;
+            var CV = window.CHL.versions && window.CHL.versions.CONTENT_VERSION;
+
+            record('T8-1', 'Content domain loaded + manifest present',
+                !!CD && !!MAN && typeof CD.resolveAll === 'function', '');
+
+            record('T8-2', 'CONTENT_VERSION bound to manifest.version',
+                CV === MAN.version && MAN.version === 'content-v1',
+                'CV=' + CV + ' manifest=' + (MAN && MAN.version));
+
+            record('T8-3', 'Manifest metadata consistent (schemaVersion=2, datasetId=content, hash, provenance)',
+                MAN.schemaVersion === 2 && MAN.datasetId === 'content' &&
+                typeof MAN.contentHash === 'string' && MAN.contentHash.length === 64 &&
+                !!MAN.publishedAt && !!MAN.provenance && !!MAN.editions &&
+                MAN.editions.ar && MAN.editions.en, '');
+
+            /* pack counts + registered */
+            var counts = { lessons: CD.count('lessons'), quiz: CD.count('quiz'), experiments: CD.count('experiments') };
+            record('T8-4', 'Pack counts (lessons=6, quiz=20, experiments=14)',
+                counts.lessons === 6 && counts.quiz === 20 && counts.experiments === 14 &&
+                MAN.packs.lessons.count === 6 && MAN.packs.quiz.count === 20 &&
+                MAN.packs.experiments.count === 14,
+                JSON.stringify(counts));
+
+            /* localization + required-field completeness via resolveAll (fail-closed) */
+            var lessonsEn = CD.resolveAll('lessons', 'en');
+            var quizAr = CD.resolveAll('quiz', 'ar');
+            record('T8-5', 'resolveAll localizes + validates complete ar/en atoms',
+                lessonsEn.length === 6 && lessonsEn.every(function (i) { return i.content.title && i.content.body; }) &&
+                quizAr.length === 20 && quizAr.every(function (i) { return i.content.q && Array.isArray(i.content.options) && i.content.options.length >= 2; }),
+                '');
+
+            /* deterministic item keys (lessons 1-6, quiz 1-20, experiments 14 '+' keys) */
+            var lKeys = CD.keys('lessons').join(',');
+            var qKeys = CD.keys('quiz').join(',');
+            var eKeys = CD.keys('experiments');
+            var expTitles = (window.CHL && window.CHL.contentPacks && window.CHL.contentPacks.experiments) ? eKeys.length : -1;
+            record('T8-6', 'Deterministic keys: lessons 1-6, quiz 1-20, 14 experiments matching catalog',
+                lKeys === '1,2,3,4,5,6' && qKeys === '1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20' &&
+                eKeys.length === 14 && eKeys.length === window.CHL.experimentCount,
+                'lessons=' + lKeys + ' exp=' + eKeys.length + ' CHL.exp=' + window.CHL.experimentCount);
+
+            /* fail-closed: unknown pack / unknown item / unknown locale throw */
+            var fcPass = true; var fcErr = '';
+            try { CD.resolve('quiz', 'nope', 'en'); fcPass = false; fcErr = 'unknown item did not throw'; } catch (e) {}
+            try { CD.count('nope'); fcPass = false; fcErr = 'unknown pack did not throw'; } catch (e) {}
+            try { CD.resolveAll('lessons', 'fr'); fcPass = false; fcErr = 'unknown locale did not throw'; } catch (e) {}
+            try { CD.resolve('quiz', '5', 'ar').content.missingField; fcPass = fcPass && true; } catch (e) {}
+            record('T8-7', 'Fail-closed: unknown item/pack/locale throw (no fabrication/fallback)',
+                fcPass, fcErr);
+
+            /* deterministic localization (ar vs en differ, stable) */
+            var r1 = CD.resolve('lessons', '1', 'ar');
+            var r1En = CD.resolve('lessons', '1', 'en');
+            record('T8-8', 'resolve localizes per-locale deterministically',
+                r1.content.title !== r1En.content.title && !!r1.content.title && !!r1En.content.title,
+                'ar=' + r1.content.title + ' | en=' + r1En.content.title);
+        } catch (e) {
+            record('T8', 'TASK-008 content suite FAILED', false, String(e));
+        }
+
+        /* ---- TASK-009: Authorization hardening suite ---- */
+        try {
+            var AZ = window.CHL && window.CHL.authorization;
+            record('A1', 'Authorization module + API present',
+                !!AZ && typeof AZ.authorize === 'function' &&
+                typeof AZ.requirePermission === 'function' &&
+                typeof AZ.isValidRole === 'function' &&
+                typeof AZ.normalizeRole === 'function' &&
+                Array.isArray(AZ.ROLES),
+                'az=' + (!!AZ) + ' authorize=' + (AZ && typeof AZ.authorize === 'function'));
+
+            record('A2', 'Canonical role vocabulary == [admin,teacher,student,user]',
+                !!AZ && AZ.ROLES.join(',') === 'admin,teacher,student,user',
+                AZ ? AZ.ROLES.join(',') : 'missing');
+
+            /* F0: registration must not self-escalate to admin when an admin
+               already exists; first-account rule still promotes. Use run-unique
+               probe emails so repeated (offline/reused-profile) runs stay valid,
+               and scrub the probes at the end to restore the baseline. */
+            var _probeSuffix = (window.__HARNESS_RUN_ID__ || 'r' + Date.now());
+            var _probeAdminId = null;
+            var _probeStudentId = null;
+            var f0RegA = window.CHLAuth.register({ email: 'probe_admin_' + _probeSuffix + '@chemlabx.com', password: 'secret123', role: 'admin' });
+            if (f0RegA.user) _probeAdminId = f0RegA.user.id;
+            var f0AdminExists = !!window.CHLDB.users.list().filter(function (u) { return u.role === 'admin'; }).length;
+            record('A3', 'F0: register requesting admin cannot self-escalate when admin exists',
+                f0AdminExists && f0RegA.user && f0RegA.user.role !== 'admin',
+                'requested=admin stored=' + (f0RegA.user ? f0RegA.user.role : 'error: ' + (f0RegA.error || '')) +
+                ' adminExists=' + f0AdminExists);
+
+            /* F0: valid non-admin roles remain allowed on registration. */
+            var f0Stu = window.CHLAuth.register({ email: 'probe_student_' + _probeSuffix + '@chemlabx.com', password: 'secret123', role: 'student' });
+            if (f0Stu.user) _probeStudentId = f0Stu.user.id;
+            record('A3b', 'F0: explicit student/user roles preserved on registration',
+                f0Stu.user && f0Stu.user.role === 'student',
+                'stored=' + (f0Stu.user ? f0Stu.user.role : 'error'));
+
+            /* AC-005: an authenticated user whose stored record becomes
+               archived:true is treated as unauthenticated (currentUser null). */
+            var adminProbe = window.CHLDB.users.list().filter(function (u) { return u.role === 'admin'; })[0];
+            var adminProbeOriginal = adminProbe.archived === true;
+            window.CHLDB.set('session', { userId: adminProbe.id, ts: Date.now() });
+            var auth1 = !!window.CHLAuth.currentUser();
+            window.CHLDB.users.upsert(adminProbe.id, Object.assign({}, adminProbe, { archived: true }));
+            var auth2 = !!window.CHLAuth.currentUser();
+            window.CHLDB.users.upsert(adminProbe.id, Object.assign({}, adminProbe, { archived: adminProbeOriginal }));
+            record('A4', 'AC-005: archived record with open session -> unauthenticated (currentUser null)',
+                auth1 === true && auth2 === false,
+                'active=' + auth1 + ' archivedSession=' + auth2);
+
+            /* F1: missing session / malformed session / missing user / malformed
+               user -> currentUser null. */
+            window.CHLDB.set('session', null);
+            var f1a = window.CHLAuth.currentUser() === null;
+            window.CHLDB.set('session', { userId: 'nonexistent_user_x', ts: Date.now() });
+            var f1b = window.CHLAuth.currentUser() === null;
+            window.CHLDB.set('session', { userId: adminProbe.id, ts: Date.now() });
+            window.CHLDB.users.upsert(adminProbe.id, Object.assign({}, adminProbe, { role: 12345 }));
+            var f1c = window.CHLAuth.currentUser() === null;
+            window.CHLDB.users.upsert(adminProbe.id, adminProbe);
+            record('A5', 'F1: missing/malformed session or user -> unauthenticated (null)',
+                f1a && f1b && f1c,
+                'noSession=' + f1a + ' missingUser=' + f1b + ' malformedUser=' + f1c);
+
+            /* F3: a non-admin actor cannot run privileged mutations at the
+               boundary (grantRole/archiveUser/unarchiveUser refused, target
+               unchanged). */
+            var studentProbe = window.CHLDB.users.list().filter(function (u) { return u.role === 'student'; })[0];
+            window.CHLDB.set('session', { userId: studentProbe.id, ts: Date.now() });
+            var adminRoleBefore = adminProbe.role;
+            var attemptedGrant = window.CHLAuth.grantRole(adminProbe.id, 'user');
+            var adminAfterGrant = window.CHLDB.users.getById(adminProbe.id);
+            var attemptedArchive = window.CHLAuth.archiveUser(adminProbe.id);
+            var adminAfterArchive = window.CHLDB.users.getById(adminProbe.id);
+            var attemptedUnarchive = window.CHLAuth.unarchiveUser(adminProbe.id);
+            record('A6', 'F3: non-admin grantRole/archiveUser/unarchiveUser refused, target unchanged',
+                attemptedGrant === null && attemptedArchive === null && attemptedUnarchive === null &&
+                adminAfterGrant.role === adminRoleBefore &&
+                !(adminAfterArchive.archived === true),
+                'grant=' + attemptedGrant + ' archive=' + attemptedArchive +
+                ' roleUnchanged=' + (adminAfterGrant.role === adminRoleBefore));
+
+            /* A7: non-canonical / derived admin role strings never grant admin
+               (fail-closed tamper guarantee). Exact "admin" is a canonical role;
+               the client cannot distinguish a user who hand-labels themselves
+               'admin' in local storage from a real admin (client-side boundary). */
+            var tamper1 = window.CHL.authorization.normalizeRole('administrator') === 'user';
+            var tamper2 = window.CHL.authorization.isValidRole('administrator') === false;
+            var tamper3 = window.CHL.authorization.authorize({ role: 'administrator' }, 'users.roles.assign') === false;
+            var tamper4 = window.CHL.authorization.authorize({ role: 'ADMIN' }, 'users.roles.assign') === false;
+            window.CHLDB.set('session', { userId: studentProbe.id, ts: Date.now() });
+            window.CHLDB.users.upsert(studentProbe.id, Object.assign({}, studentProbe, { role: 'administrator' }));
+            var tamper5 = window.CHLAuth.currentUser() === null;
+            window.CHLDB.users.upsert(studentProbe.id, studentProbe);
+            record('A7', 'A7: non-canonical admin-like role strings grant NO admin permissions',
+                tamper1 && tamper2 && tamper3 && tamper4 && tamper5,
+                'norm=' + tamper1 + ' valid=' + tamper2 + ' authzAdmin=' + tamper3 +
+                ' upper=' + tamper4 + ' currentUserNull=' + tamper5);
+
+            /* A8: unknown role / unknown permission fail closed. */
+            var a8a = window.CHL.authorization.authorize({ role: 'nobody' }, 'users.roles.assign') === false;
+            var a8b = window.CHL.authorization.authorize({ role: 'admin' }, 'does.not.exist') === false;
+            var a8c = window.CHL.authorization.authorize(null, 'users.roles.assign') === false;
+            var a8d = window.CHL.authorization.authorize({}, 'users.roles.assign') === false;
+            record('A8', 'A8: unknown role/permission fail closed (deny)',
+                a8a && a8b && a8c && a8d, 'unknownRole=' + a8a + ' unknownPerm=' + a8b +
+                ' nullActor=' + a8c + ' emptyActor=' + a8d);
+
+            /* A9: the centralized decision behind direct admin page access —
+                 the same requirePermission gate admin.js uses — denies non-admin. */
+            var adminActor = { role: 'admin' };
+            var studentActor = { role: 'student' };
+            var teacherActor = { role: 'teacher' };
+            var a9 = window.CHL.authorization.requirePermission(adminActor, 'users.roles.assign') === true &&
+                window.CHL.authorization.requirePermission(studentActor, 'users.roles.assign') === false &&
+                window.CHL.authorization.requirePermission(teacherActor, 'users.roles.assign') === false &&
+                window.CHL.authorization.requirePermission(null, 'users.roles.assign') === false;
+            record('A9', 'A9: admin gate decision denies non-admin (incl. unauthenticated)',
+                a9, 'admin=' + window.CHL.authorization.requirePermission(adminActor, 'users.roles.assign') +
+                ' student=' + window.CHL.authorization.requirePermission(studentActor, 'users.roles.assign'));
+
+            /* A10: guest keeps lab capability but gains no user-management/admin. */
+            var guest = window.CHLAuth.guest();
+            var a10 = window.CHL.authorization.authorize(guest, 'lab.run') === true &&
+                window.CHL.authorization.authorize(guest, 'lab.mix') === true &&
+                window.CHL.authorization.authorize(guest, 'users.roles.assign') === false &&
+                window.CHL.authorization.authorize(guest, 'users.archive') === false &&
+                window.CHL.authorization.authorize(guest, 'users.unarchive') === false &&
+                guest.role === 'user';
+            record('A10', 'A10: guest lab-capable, no user-management/admin permissions',
+                a10, 'role=' + guest.role + ' lab=' + window.CHL.authorization.authorize(guest, 'lab.run') +
+                ' assign=' + window.CHL.authorization.authorize(guest, 'users.roles.assign'));
+
+            /* A11: valid existing users / roles remain fully compatible. */
+            window.CHLDB.set('session', { userId: adminProbe.id, ts: Date.now() });
+            var cmp1 = window.CHLAuth.currentUser() && window.CHLAuth.currentUser().role === 'admin';
+            var cmp2 = window.CHLAuth.roleLabel('teacher').en === 'Teacher';
+            var cmp3 = window.CHLAuth.isLoggedIn() === true;
+            var cmp4 = window.CHLAuth.require(['admin', 'teacher', 'student', 'user']) !== null;
+            /* restore the session to the clean (no-session) baseline */
+            window.CHLDB.set('session', null);
+            record('A11', 'A11: valid user compatibility — auth, labels, require preserved',
+                cmp1 && cmp2 && cmp3 && cmp4,
+                'adminAuth=' + cmp1 + ' label=' + cmp2 + ' loggedIn=' + cmp3 + ' require=' + cmp4);
+
+            /* A12: the full authorization API surface is callable without throwing
+                 (runtime-error regression for the module). */
+            var a12ok = (function () {
+                try {
+                    ['admin', 'teacher', 'student', 'user'].forEach(function (r) {
+                        window.CHL.authorization.normalizeRole(r);
+                        window.CHL.authorization.authorize({ role: r }, 'lab.run');
+                        window.CHL.authorization.authorize({ role: r }, 'users.roles.assign');
+                    });
+                    window.CHL.authorization.ROLES.slice();
+                    window.CHL.authorization.PERMISSIONS.admin.slice();
+                    return true;
+                } catch (e) { return false; }
+            })();
+            record('A12', 'A12: authorization API surface callable without throwing',
+                a12ok, '');
+
+            /* Scrub probe users + session to restore the exact baseline state
+               (so fresh/reused/offline runs never leak or collide). */
+            try {
+                if (_probeAdminId) window.CHLDB.users.remove(_probeAdminId);
+                if (_probeStudentId) window.CHLDB.users.remove(_probeStudentId);
+                window.CHLDB.set('session', null);
+            } catch (eS) {}
+        } catch (e) {
+            record('A', 'TASK-009 Authorization suite FAILED', false, String(e));
+            try { window.CHLDB.set('session', null); if (_probeAdminId) window.CHLDB.users.remove(_probeAdminId); if (_probeStudentId) window.CHLDB.users.remove(_probeStudentId); } catch (e2) {}
+        }
+
+        /* ---- J. TASK-010 Change Journal suite ---- */
+        try {
+            var CJ = window.CHL.changeJournal;
+            var jReady = !!(CJ && CJ.record && CJ.createChange && CJ.append && CJ.cursor &&
+                CJ.replayFrom && CJ.advanceCursor && CJ.tombstone && CJ.clear && CJ.versionOf &&
+                CJ.OPS && CJ.ENTITY_TYPES);
+            record('J1', 'Change Journal module + API surface present', jReady,
+                jReady ? ('OPS=' + CJ.OPS.join(',') + ' types=' + CJ.ENTITY_TYPES.join(',')) : 'missing');
+
+            /* J1b: schema — createChange emits all 11 required spec fields with
+                correct defaults (orgId null, actorId system, deviceId local-device). */
+            try {
+                CJ.clear();
+                var sample = CJ.createChange({ entityType: 'result', entityId: 'res-1', op: 'upsert' });
+                var j1b = sample.changeId && sample.entityType === 'result' && sample.entityId === 'res-1' &&
+                    sample.op === 'upsert' && sample.baseVersion === 0 && sample.version === 1 &&
+                    sample.actorId === 'system' && sample.deviceId === 'local-device' &&
+                    typeof sample.wallClock === 'string' && sample.orgId === null &&
+                    sample.payloadRef === 'result:res-1';
+                record('J1b', 'Schema: createChange emits all required fields with correct defaults',
+                    j1b, JSON.stringify({ actorId: sample.actorId, orgId: sample.orgId, deviceId: sample.deviceId, ref: sample.payloadRef }));
+            } catch (e) { record('J1b', 'Schema: createChange emits all required fields', false, String(e)); }
+
+            /* J2: fail-closed validation — invalid inputs REJECT (throw). */
+            var j2ok = true; var j2detail = '';
+            try { CJ.createChange({ entityType: 'theme', entityId: 'x', op: 'upsert' }); j2ok = false; j2detail = 'bad entityType accepted'; } catch (e) {}
+            try { CJ.createChange({ entityType: 'result', entityId: 'x', op: 'merge' }); j2ok = false; j2detail = 'bad op accepted'; } catch (e) {}
+            try { CJ.createChange({ entityType: 'result', entityId: 'x', op: 'upsert', version: 2, baseVersion: 5 }); j2ok = false; j2detail = 'baseVersion>version accepted'; } catch (e) {}
+            try { CJ.createChange({ entityType: 'result', entityId: 'x', op: 'upsert', version: -1 }); j2ok = false; j2detail = 'negative version accepted'; } catch (e) {}
+            record('J2', 'Fail-closed: invalid entityType/op/version REJECTED', j2ok, j2detail);
+
+            /* J3: per-entity monotonic version; idempotent unique changeId;
+                duplicate changeId ignored (same change returned, count unchanged). */
+            var c1 = CJ.record('result', 'entity-A', 'upsert', { id: 'entity-A' }, 'system', { changeId: 'cj-dup' });
+            var c2 = CJ.record('result', 'entity-A', 'upsert', { id: 'entity-A' }, 'system', { changeId: 'cj-dup' });
+            var c3 = CJ.record('result', 'entity-A', 'upsert', { id: 'entity-A' }, 'system');
+            var j3 = c1.version === 1 && c1.baseVersion === 0 &&
+                c2 === c1 && c3.version === 2 && c3.baseVersion === 1 &&
+                CJ.count() === 2 && CJ.versionOf('result', 'entity-A') === 2;
+            record('J3', 'Versioning: monotonic per-entity; duplicate changeId ignored',
+                j3, 'v1=' + c1.version + ' v3=' + c3.version + ' count=' + CJ.count());
+
+            /* J4: cursor/replay/ack — cursor==count, replayFrom returns delta,
+                pending() = un-acked changes after advanceCursor. */
+            CJ.advanceCursor(1);
+            var j4 = CJ.cursor() === 2 && CJ.replayFrom(0).length === 2 &&
+                CJ.replayFrom(2).length === 0 && CJ.pending().length === 1 &&
+                CJ.acknowledgedCursor() === 1;
+            record('J4', 'Cursor: replayFrom delta + advanceCursor pending queue',
+                j4, 'cursor=' + CJ.cursor() + ' acked=' + CJ.acknowledgedCursor() + ' pending=' + CJ.pending().length);
+
+            /* J5: tombstone op records a delete and advances the entity version. */
+            var tb = CJ.tombstone('result', 'entity-A', 'system');
+            var j5 = tb.op === 'delete' && tb.version === 3 && tb.baseVersion === 2 &&
+                CJ.versionOf('result', 'entity-A') === 3;
+            record('J5', 'Tombstone: delete op recorded, version advanced', j5, 'op=' + tb.op + ' v=' + tb.version);
+
+            /* J6: ordering is driven by version/append, NOT wallClock (info-only). */
+            var wa = CJ.record('result', 'entity-B', 'upsert', null, 'system', { wallClock: '2099-01-01T00:00:00Z' });
+            var wb = CJ.record('result', 'entity-B', 'upsert', null, 'system', { wallClock: '1999-01-01T00:00:00Z' });
+            var j6 = wa.version === 1 && wb.version === 2 && CJ.versionOf('result', 'entity-B') === 2 &&
+                CJ.replayFrom(0).length === CJ.cursor();
+            record('J6', 'Ordering by version/append, not wallClock', j6, 'wa.v=' + wa.version + ' wb.v=' + wb.version);
+
+            /* J7: journal persists through the CHLDB boundary (round-trip). */
+            var j7 = CJ.status().count === CJ.cursor() && CJ.get(c1.changeId) !== null &&
+                CJ.has(c1.changeId) === true && CJ.status().failures.length === 0;
+            record('J7', 'Persistence: journal state round-trips via CHLDB', j7,
+                'count=' + CJ.count() + ' failures=' + CJ.status().failures.length);
+
+            /* J8: journal contains NO domain business logic — payload is a
+                reference to a pre-persisted entity, never a fabricated result. */
+            var domainRefs = /CHEMLABX.*REACTIONS|allowReward|allowPresentation|SAFETY_MODEL|RULES_VERSION|danger|neutraliz/i;
+            var j8 = !domainRefs.test(CJ.record.toString() + CJ.append.toString() + CJ.tombstone.toString());
+            record('J8', 'No domain business logic inside Change Journal', j8, 'pure generic change capture');
+
+            /* J9: integration — a real safe performMix journals exactly one
+                'result' upsert at the domain write boundary. */
+            try {
+                CJ.clear();
+                window.Lab.state.benchItems = [{ material: 'HCl' }, { material: 'NaOH' }];
+                window.Lab.state.isReacting = false;
+                window.Lab.state.lastResult = null;
+                window.Lab.state.lastDetermination = null;
+                window.Lab.state.experimentCount = 0;
+                window.Lab.state.validExperiments = 0;
+                window.Lab.engine.performMix();
+                var jlist = CJ.list();
+                var jr = jlist.length ? jlist[0] : null;
+                var j9 = CJ.count() === 1 && jr &&
+                    jr.entityType === 'result' && jr.op === 'upsert' && jr.version === 1 &&
+                    (window.Lab.state.lastResult && window.Lab.state.lastResult.status === 'ok');
+                record('J9', 'Integration: real performMix journals one result upsert',
+                    j9, 'count=' + CJ.count() + ' ent=' + (jr && jr.entityType) + ' status=' +
+                    (window.Lab.state.lastResult && window.Lab.state.lastResult.status));
+            } catch (e) { record('J9', 'Integration: real performMix journals one result upsert', false, String(e)); }
+
+            /* J10: clear() restores the empty baseline (deterministic / offline-safe). */
+            var before = CJ.count();
+            CJ.clear();
+            var j10 = CJ.count() === 0 && CJ.cursor() === 0 && CJ.pending().length === 0;
+            record('J10', 'clear() restores empty baseline', j10, 'was ' + before + ' now ' + CJ.count());
+        } catch (e) {
+            record('J', 'TASK-010 Change Journal suite FAILED', false, String(e));
+            try { window.CHL.changeJournal.clear(); } catch (e2) {}
+        }
+
+        /* ---- K. TASK-011 Education Domain suite ---- */
+        try {
+            var ED = window.Education;
+            var _kRun = 'k' + Date.now();
+            /* snapshot the exact pre-suite baseline (deep copy; the CHLDB cache
+               map is shared/live, so restoration must use a private clone). */
+            var _kSnapJSON = function (v) { return JSON.parse(JSON.stringify(v)); };
+            var _kSnap = {
+                teachers: _kSnapJSON(window.CHLDB.get('teachers', {})),
+                students: _kSnapJSON(window.CHLDB.get('students', {})),
+                courses: _kSnapJSON(window.CHLDB.get('courses', {})),
+                classes: _kSnapJSON(window.CHLDB.classes.all() || {}),
+                assignments: _kSnapJSON(window.CHLDB.assignments.all() || {}),
+                submissions: _kSnapJSON(window.CHLDB.submissions.all() || {}),
+                results: _kSnapJSON(window.CHLDB.results.all() || {}),
+                users: _kSnapJSON(window.CHLDB.users.all() || {}),
+                session: window.CHLDB.get('session', null),
+                perms: JSON.stringify(window.CHL.authorization.PERMISSION_NAMES),
+                permsMatrix: JSON.stringify(window.CHL.authorization.PERMISSIONS),
+                pins: JSON.stringify({
+                    app: window.CHL.versions.APP_VERSION,
+                    schema: window.CHL.versions.SCHEMA_VERSION,
+                    chemData: window.CHL.versions.CHEMISTRY_DATA_VERSION,
+                    engine: window.CHL.versions.ENGINE_VERSION,
+                    safetyModel: window.CHL.versions.SAFETY_MODEL_VERSION,
+                    safetyRules: window.CHL.versions.SAFETY_RULES_VERSION
+                })
+            };
+            window.CHLDB.set('session', null);
+            ED.setActor(null);
+            window.CHL.changeJournal.clear();
+
+            var _kAdminUser = window.CHLDB.users.list().filter(function (u) { return u.role === 'admin'; })[0];
+            var _kTeacherUser = window.CHLDB.users.list().filter(function (u) { return u.role === 'teacher'; })[0];
+            var _kStudentUser = window.CHLDB.users.list().filter(function (u) { return u.role === 'student'; })[0];
+
+            function act(u) { ED.setActor(u); }
+            function expectThrow(fn) {
+                try { fn(); return false; } catch (e) { return /EducationError/.test(String(e)); }
+            }
+
+            record('K1', 'Education module loaded; RULES_VERSION/ENTITY_TYPES/API present',
+                !!ED && typeof ED.createTeacher === 'function' && typeof ED.createStudent === 'function' &&
+                typeof ED.createCourse === 'function' && typeof ED.createClass === 'function' &&
+                typeof ED.createAssignment === 'function' && typeof ED.submitAssignment === 'function' &&
+                ED.RULES_VERSION() === 'prototype-education-v1' &&
+                ED.ENTITY_TYPES.join(',') === 'teacher,student,course,class,assignment,submission',
+                'rules=' + (ED.RULES_VERSION ? ED.RULES_VERSION() : 'missing'));
+
+            var k2 = JSON.stringify(ED.STATUS) === JSON.stringify({
+                teacher: ['active', 'archived'], student: ['active', 'archived'],
+                course: ['active', 'archived'], class: ['active', 'archived'],
+                assignment: ['draft', 'published', 'archived'], submission: ['submitted', 'returned']
+            }) && ED.isValidStatus('assignment', 'published') === true &&
+                ED.isValidStatus('class', 'draft') === false && ED.isValidStatus('people', 'active') === false;
+            record('K2', 'Status vocabulary correct; invalid status fails closed', k2, JSON.stringify(ED.STATUS));
+
+            act({ id: _kAdminUser.id });
+            var tRef = ED.createTeacher({ userId: _kTeacherUser.id, school: 'K-School', schoolEn: 'K School' });
+            record('K3', 'Teacher profile create (admin): linked id, values, active, version 1, orgId null',
+                tRef.id === _kTeacherUser.id && tRef.role === 'teacher' && tRef.status === 'active' &&
+                tRef.entityVersion === 1 && tRef.orgId === null && !!tRef.createdAt && !!tRef.updatedAt &&
+                !!tRef.provenance && ED.getTeacher(_kTeacherUser.id) !== null &&
+                ED.listTeachers().length === 1,
+                'id=' + tRef.id + ' version=' + tRef.entityVersion + ' prov=' + (!!tRef.provenance));
+
+            var k4 = true;
+            try { act({ id: _kStudentUser.id }); ED.createTeacher({ userId: _kTeacherUser.id }); k4 = false; } catch (e) {}
+            try { act({ id: _kAdminUser.id }); ED.createTeacher({ userId: 'zz-nope' }); k4 = false; } catch (e) {}
+            try { act({ id: _kAdminUser.id }); ED.createTeacher({ userId: _kStudentUser.id }); k4 = false; } catch (e) {}
+            try { act({ id: _kAdminUser.id }); ED.createTeacher({ userId: _kTeacherUser.id }); k4 = false; } catch (e) {}
+            record('K4', 'Teacher create fails closed (denied actor, missing/mismatched/duplicate id)', k4, '');
+
+            act({ id: _kAdminUser.id });
+            var sRef = ED.createStudent({ userId: _kStudentUser.id });
+            record('K5', 'Student profile create (admin): linked id, empty classIds, active, version 1',
+                sRef.id === _kStudentUser.id && sRef.role === 'student' && sRef.status === 'active' &&
+                sRef.entityVersion === 1 && sRef.orgId === null &&
+                Array.isArray(sRef.classIds) && sRef.classIds.length === 0 &&
+                ED.getStudent(_kStudentUser.id) !== null,
+                'id=' + sRef.id);
+
+            var k6 = true;
+            try { act({ id: _kTeacherUser.id }); ED.createStudent({ userId: _kStudentUser.id }); k6 = false; } catch (e) {}
+            try { act({ id: _kAdminUser.id }); ED.createStudent({ userId: 'zz-nope' }); k6 = false; } catch (e) {}
+            try { act({ id: _kAdminUser.id }); ED.createStudent({ userId: _kStudentUser.id }); k6 = false; } catch (e) {}
+            record('K6', 'Student create fails closed (non-admin denied, unknown/duplicate id)', k6, '');
+
+            act({ id: _kTeacherUser.id });
+            var courseRef = ED.createCourse({
+                id: _kRun + '-course', name: 'K Course', nameEn: 'K Course',
+                code: 'KCS' + _kRun, gradeLevel: '10'
+            });
+            record('K7', 'Course create (teacher): fields, unique code, stored, listable',
+                courseRef.id === _kRun + '-course' && courseRef.code === 'KCS' + _kRun &&
+                courseRef.status === 'active' && courseRef.entityVersion === 1 && courseRef.orgId === null &&
+                ED.getCourse(courseRef.id) !== null && ED.listCourses().length === 1,
+                JSON.stringify({ id: courseRef.id, code: courseRef.code }));
+
+            var k8 = true;
+            try { act({ id: _kStudentUser.id }); ED.createCourse({ name: 'X', nameEn: 'X', code: 'X1' + _kRun }); k8 = false; } catch (e) {}
+            try { act({ id: _kTeacherUser.id }); ED.createCourse({ name: 'X', nameEn: 'X', code: '' }); k8 = false; } catch (e) {}
+            try { act({ id: _kTeacherUser.id }); ED.createCourse({ name: 'X', nameEn: 'X', code: courseRef.code }); k8 = false; } catch (e) {}
+            try { act({ id: _kTeacherUser.id }); ED.createCourse({ id: courseRef.id, name: 'Y', nameEn: 'Y', code: 'Y9' + _kRun }); k8 = false; } catch (e) {}
+            try { act({ id: _kTeacherUser.id }); ED.createCourse({ name: 'Z', nameEn: 'Z', code: 'Z7' + _kRun, orgId: 'org-x' }); k8 = false; } catch (e) {}
+            record('K8', 'Course fails closed (denied actor, missing/dup code, dup id, orgId)', k8, '');
+
+            act({ id: _kTeacherUser.id });
+            var classRef = ED.createClass({
+                id: _kRun + '-class', name: 'K Class', nameEn: 'K Class', code: 'KCL' + _kRun,
+                teacherId: _kTeacherUser.id, studentIds: [_kStudentUser.id], courseIds: [courseRef.id],
+                description: 'k', descriptionEn: 'k'
+            });
+            var k9 = classRef.id === _kRun + '-class' && classRef.status === 'active' &&
+                classRef.teacherId === _kTeacherUser.id && classRef.teacherIds[0] === _kTeacherUser.id &&
+                classRef.code === 'KCL' + _kRun && classRef.studentIds[0] === _kStudentUser.id &&
+                classRef.courseIds[0] === courseRef.id && classRef.orgId === null &&
+                classRef.entityVersion === 1 &&
+                ED.getStudent(_kStudentUser.id).classIds.indexOf(classRef.id) !== -1;
+            record('K9', 'Class create (teacher owner): page-compat fields + course/student links + sync',
+                k9, JSON.stringify({ teacher: classRef.teacherId, students: classRef.studentIds, courses: classRef.courseIds }));
+
+            var k10 = true;
+            try { act({ id: _kStudentUser.id }); ED.createClass({ name: 'A', nameEn: 'A', code: 'CA1' + _kRun, teacherId: _kTeacherUser.id }); k10 = false; } catch (e) {}
+            try { act({ id: _kTeacherUser.id }); ED.createClass({ name: 'A', nameEn: 'A', code: 'CA2' + _kRun, teacherId: 'zz-teacher' }); k10 = false; } catch (e) {}
+            try { act({ id: _kTeacherUser.id }); ED.createClass({ name: 'A', nameEn: 'A', code: 'CA3' + _kRun, teacherId: _kTeacherUser.id, studentIds: ['zz-student'] }); k10 = false; } catch (e) {}
+            try { act({ id: _kTeacherUser.id }); ED.createClass({ name: 'A', nameEn: 'A', code: classRef.code, teacherId: _kTeacherUser.id }); k10 = false; } catch (e) {}
+            try { act({ id: 'zz-other', role: 'teacher' }); ED.createClass({ name: 'A', nameEn: 'A', code: 'CA4' + _kRun, teacherId: _kTeacherUser.id }); k10 = false; } catch (e) {}
+            record('K10', 'Class fails closed (denied actor, unknown teacher/student profile, dup code, non-owner)', k10, '');
+
+            var k11 = true;
+            try { act({ id: _kTeacherUser.id }); ED.createClass({ id: classRef.id, name: 'B', nameEn: 'B', code: 'CB1' + _kRun, teacherId: _kTeacherUser.id }); k11 = false; } catch (e) {}
+            try { act({ id: _kTeacherUser.id }); ED.createClass({ name: 'B', nameEn: 'B', code: 'CB2' + _kRun, teacherId: _kTeacherUser.id, orgId: 'o' }); k11 = false; } catch (e) {}
+            record('K11', 'Class fails closed on duplicate id and non-null orgId', k11, '');
+
+            act({ id: _kTeacherUser.id });
+            var asgRef = ED.createAssignment({
+                id: _kRun + '-asg', classId: classRef.id, title: 'K Lab', titleEn: 'K Lab',
+                experimentRefs: ['HCl+NaOH'], description: 'k', descriptionEn: 'k', dueAt: 1752000000000
+            });
+            record('K12', 'Assignment create (lab): derived type/target, page-compat fields, draft',
+                asgRef.type === 'lab' && asgRef.target === 'HCl+NaOH' &&
+                asgRef.teacherId === _kTeacherUser.id && asgRef.createdBy === _kTeacherUser.id &&
+                asgRef.courseId === courseRef.id && asgRef.dueDate === asgRef.dueAt &&
+                asgRef.dueAt === 1752000000000 && asgRef.status === 'draft' &&
+                asgRef.classId === classRef.id && asgRef.orgId === null,
+                JSON.stringify({ type: asgRef.type, target: asgRef.target, status: asgRef.status, dueDateAsg: asgRef.dueDate }));
+
+            act({ id: _kTeacherUser.id });
+            var asgLesson = ED.createAssignment({ id: _kRun + '-asgl', classId: classRef.id, title: 'KL', titleEn: 'KL', lessonRefs: [1] });
+            var asgQuiz = ED.createAssignment({ id: _kRun + '-asgq', classId: classRef.id, title: 'KQ', titleEn: 'KQ', quizRefs: [1] });
+            record('K13', 'Assignment type derivation: lessonRefs->lesson, quizRefs->quiz',
+                asgLesson.type === 'lesson' && asgLesson.target === '1' &&
+                asgQuiz.type === 'quiz' && asgQuiz.target === '1',
+                'lesson=' + asgLesson.type + ':' + asgLesson.target + ' quiz=' + asgQuiz.type + ':' + asgQuiz.target);
+
+            var k14 = true;
+            try { act({ id: _kTeacherUser.id }); ED.createAssignment({ id: _kRun + '-x1', classId: classRef.id, title: 'X', titleEn: 'X' }); k14 = false; } catch (e) {}
+            try { act({ id: _kTeacherUser.id }); ED.createAssignment({ id: _kRun + '-x2', classId: classRef.id, title: 'X', titleEn: 'X', experimentRefs: ['Qq+Qq'] }); k14 = false; } catch (e) {}
+            try { act({ id: _kTeacherUser.id }); ED.createAssignment({ id: _kRun + '-x3', classId: 'zz-class', title: 'X', titleEn: 'X', experimentRefs: ['HCl+NaOH'] }); k14 = false; } catch (e) {}
+            try { act({ id: _kStudentUser.id }); ED.createAssignment({ id: _kRun + '-x4', classId: classRef.id, title: 'X', titleEn: 'X', experimentRefs: ['HCl+NaOH'] }); k14 = false; } catch (e) {}
+            try { act({ id: _kTeacherUser.id }); ED.createAssignment({ id: _kRun + '-x5', classId: classRef.id, title: 'X', titleEn: 'X', experimentRefs: ['HCl+NaOH'], availableFrom: 9999999999999, dueAt: 1752000000000 }); k14 = false; } catch (e) {}
+            record('K14', 'Assignment fails closed (no refs, unknown ref/class, denied actor, window reversed)', k14, '');
+
+            act({ id: _kTeacherUser.id });
+            var published = ED.publishAssignment(asgRef.id);
+            record('K15', 'publishAssignment: draft->published, entityVersion bumped',
+                published.status === 'published' && published.entityVersion === 2 &&
+                ED.getAssignment(asgRef.id).status === 'published',
+                'status=' + published.status + ' v=' + published.entityVersion);
+
+            var k16 = true;
+            try { act({ id: _kTeacherUser.id }); ED.publishAssignment(asgRef.id); k16 = false; } catch (e) {}
+            try { act({ id: _kStudentUser.id }); ED.publishAssignment(asgRef.id); k16 = false; } catch (e) {}
+            try { act({ id: 'zz-other', role: 'teacher' }); ED.publishAssignment(asgRef.id); k16 = false; } catch (e) {}
+            record('K16', 'publish fails closed (non-draft, denied actors)', k16, '');
+
+            act({ id: _kTeacherUser.id });
+            var arch = ED.archiveAssignment(asgRef.id);
+            var k17 = arch.status === 'archived';
+            try { act({ id: _kTeacherUser.id }); ED.publishAssignment(asgRef.id); k17 = false; } catch (e) {}
+            try { act({ id: _kTeacherUser.id }); ED.archiveAssignment(asgRef.id); k17 = false; } catch (e) {}
+            record('K17', 'archiveAssignment terminal; re-publish/re-archive denied', k17, '');
+
+            act({ id: _kTeacherUser.id });
+            var asgFull = ED.publishAssignment(ED.createAssignment({
+                id: _kRun + '-asgf', classId: classRef.id, title: 'K Full', titleEn: 'K Full',
+                experimentRefs: ['HCl+NaOH'], dueAt: 1760000000000, availableFrom: 1000000000000
+            }).id);
+            act({ id: _kStudentUser.id });
+            var sub1 = ED.submitAssignment({ assignmentId: asgFull.id });
+            record('K18', 'submitAssignment (owner student): submitted, attempt 1, page-compat fields',
+                sub1.status === 'submitted' && sub1.attempt === 1 && sub1.studentId === _kStudentUser.id &&
+                sub1.userId === _kStudentUser.id && sub1.classId === classRef.id &&
+                sub1.assignmentId === asgFull.id && sub1.orgId === null && !!sub1.submittedAt,
+                JSON.stringify({ attempt: sub1.attempt, status: sub1.status, ref: sub1.resultRef }));
+
+            var _kResultId = 'kres' + _kRun;
+            window.CHLDB.results.upsert(_kResultId, {
+                id: _kResultId, order: 90001, status: 'ok', decision: 'allow',
+                gate: { allowPresentation: true, allowReward: true }, versions: {}, hc: {}
+            });
+            var subRes = ED.submitAssignment({ assignmentId: asgFull.id, resultRef: _kResultId, result: { score: 10 } });
+            var k19a = subRes.resultRef === 'result:' + _kResultId && subRes.attempt === 2 && subRes.result.score === 10;
+            var k19b = expectThrow(function () { ED.submitAssignment({ assignmentId: asgFull.id, resultRef: 'zz-missing' }); });
+            var k19c = expectThrow(function () {
+                ED.setActor({ id: 'zz-other-student', role: 'student' });
+                ED.submitAssignment({ assignmentId: asgFull.id, studentId: _kStudentUser.id });
+            });
+            act({ id: _kStudentUser.id });
+            record('K19', 'resultRef stored when resolvable; missing resultRef + non-owner denied',
+                k19a && k19b && k19c, 'ref=' + subRes.resultRef + ' attempt=' + subRes.attempt);
+
+            act({ id: _kTeacherUser.id });
+            var asgDraft = ED.createAssignment({ id: _kRun + '-asgd', classId: classRef.id, title: 'KD', titleEn: 'KD', experimentRefs: ['HCl+NaOH'] });
+            var asgFuture = ED.publishAssignment(ED.createAssignment({
+                id: _kRun + '-asgft', classId: classRef.id, title: 'KF', titleEn: 'KF',
+                experimentRefs: ['HCl+NaOH'], availableFrom: 9999999999999, dueAt: 9999999999999
+            }).id);
+            var k20 = true;
+            try { act({ id: _kStudentUser.id }); ED.submitAssignment({ assignmentId: asgDraft.id }); k20 = false; } catch (e) {}
+            try { act({ id: _kStudentUser.id }); ED.submitAssignment({ assignmentId: asgRef.id }); k20 = false; } catch (e) {}
+            try { act({ id: _kStudentUser.id }); ED.submitAssignment({ assignmentId: asgFuture.id }); k20 = false; } catch (e) {}
+            try { act({ id: _kAdminUser.id }); ED.submitAssignment({ assignmentId: asgFull.id, studentId: 'zz-unprofiled' }); k20 = false; } catch (e) {}
+            try { act({ id: 'g1', role: 'user', guest: true }); ED.submitAssignment({ assignmentId: asgFull.id }); k20 = false; } catch (e) {}
+            record('K20', 'submit fails closed (draft/archived/future assignment, unprofiled student, guest)',
+                k20, '');
+
+            act({ id: _kStudentUser.id });
+            var sub3 = ED.submitAssignment({ assignmentId: asgFull.id });
+            record('K21', 'Resubmission creates a new record with attempt incremented (no duplicate entity)',
+                sub3.attempt === 3 && sub3.id !== sub1.id && sub3.attempt === subRes.attempt + 1,
+                'attempts=' + [sub1.attempt, subRes.attempt, sub3.attempt].join(','));
+
+            act({ id: _kTeacherUser.id });
+            var returned = ED.returnSubmission(sub1.id, 'Good work');
+            record('K22', 'returnSubmission: submitted->returned, returnedAt, version bump, feedback',
+                returned.status === 'returned' && !!returned.returnedAt && returned.entityVersion === 2 &&
+                returned.feedback === 'Good work',
+                JSON.stringify({ status: returned.status, v: returned.entityVersion }));
+
+            var k23 = true;
+            try { act({ id: _kStudentUser.id }); ED.returnSubmission(sub1.id); k23 = false; } catch (e) {}
+            try { act({ id: 'zz-other', role: 'teacher' }); ED.returnSubmission(sub1.id); k23 = false; } catch (e) {}
+            try { act({ id: _kTeacherUser.id }); ED.returnSubmission(sub1.id); k23 = false; } catch (e) {}
+            record('K23', 'return fails closed (student, non-owner teacher, already returned)', k23, '');
+
+            act({ id: _kTeacherUser.id });
+            var scT = ED.submissionsForClass(classRef.id).length;
+            var k24 = scT === 3;
+            try { act({ id: 'zz-other', role: 'teacher' }); ED.submissionsForClass(classRef.id); k24 = false; } catch (e) {}
+            try { act({ id: _kStudentUser.id }); ED.submissionsForClass(classRef.id); k24 = false; } catch (e) {}
+            act({ id: _kAdminUser.id });
+            if (ED.submissionsForClass(classRef.id).length !== 3) k24 = false;
+            record('K24', 'submissionsForClass: teacher/admin read; non-owner teacher + student denied',
+                k24, 'count=' + scT);
+
+            act({ id: _kStudentUser.id });
+            var own = ED.submissionsForStudent(_kStudentUser.id).length;
+            var k25 = own === 3;
+            try { act({ id: 'zz-other', role: 'student' }); ED.submissionsForStudent(_kStudentUser.id); k25 = false; } catch (e) {}
+            record('K25', 'submissionsForStudent: owner reads own; unrelated student denied', k25, 'own=' + own);
+
+            var eduSrc = await fetchText('/js/domain/education.js');
+            var k26 = eduSrc.status === 200 &&
+                !/document\.|window\.alert|alert\(|innerHTML|Math\.random|fetch\(|XMLHttpRequest|WebSocket|navigator\.onLine/.test(eduSrc.text);
+            record('K26', 'Education domain source is UI-free, offline, no random ids', k26, 'bytes=' + eduSrc.text.length);
+
+            /* K27: journal discipline on an isolated mini-flow */
+            window.CHL.changeJournal.clear();
+            act({ id: _kTeacherUser.id });
+            var jCourse = ED.createCourse({ id: _kRun + '-jcourse', name: 'JC', nameEn: 'JC', code: 'JCU' + _kRun });
+            var cntAfterCourse = window.CHL.changeJournal.count();
+            var jClass = ED.createClass({ id: _kRun + '-jclass', name: 'JC', nameEn: 'JC', code: 'JCL' + _kRun, teacherId: _kTeacherUser.id });
+            var jAsg = ED.publishAssignment(ED.createAssignment({
+                id: _kRun + '-jasg', classId: jClass.id, title: 'JA', titleEn: 'JA', lessonRefs: [1]
+            }).id);
+            act({ id: _kStudentUser.id });
+            var jSub = ED.submitAssignment({ assignmentId: jAsg.id });
+            var jlist = window.CHL.changeJournal.list();
+            var actual = {};
+            var allUpsert = true;
+            for (var ji = 0; ji < jlist.length; ji++) {
+                var ch = jlist[ji];
+                if (ch.op !== 'upsert') allUpsert = false;
+                actual[ch.entityType] = (actual[ch.entityType] || 0) + 1;
+            }
+            var k27 = cntAfterCourse === 0 && jlist.length === 4 &&
+                JSON.stringify(actual) === '{"class":1,"assignment":2,"submission":1}' &&
+                allUpsert && window.CHL.changeJournal.status().failures.length === 0;
+            record('K27', 'Journal discipline: class/assignment/submission upserts only; profiles NOT journaled',
+                k27, JSON.stringify(actual));
+
+            var k28 = JSON.stringify(window.CHL.authorization.PERMISSION_NAMES) === _kSnap.perms &&
+                JSON.stringify(window.CHL.authorization.PERMISSIONS) === _kSnap.permsMatrix &&
+                expectThrow(function () { ED.setActor({ role: 'administrator' }); ED.createCourse({ name: 'X', nameEn: 'X', code: 'XA' + _kRun }); }) &&
+                expectThrow(function () { ED.setActor(null); ED.createCourse({ name: 'X', nameEn: 'X', code: 'XB' + _kRun }); });
+            record('K28', 'authorization module untouched; unknown role fails closed via normalizeRole',
+                k28, '');
+
+            var k29 = JSON.stringify({
+                app: window.CHL.versions.APP_VERSION,
+                schema: window.CHL.versions.SCHEMA_VERSION,
+                chemData: window.CHL.versions.CHEMISTRY_DATA_VERSION,
+                engine: window.CHL.versions.ENGINE_VERSION,
+                safetyModel: window.CHL.versions.SAFETY_MODEL_VERSION,
+                safetyRules: window.CHL.versions.SAFETY_RULES_VERSION
+            }) === _kSnap.pins;
+            record('K29', 'Version pins untouched by the Education domain', k29, '');
+
+            var k30 = classRef.orgId === null && tRef.orgId === null && sRef.orgId === null &&
+                courseRef.orgId === null && asgFull.orgId === null && sub1.orgId === null &&
+                published.entityVersion === 2 && returned.entityVersion === 2 &&
+                !!classRef.provenance && !!asgFull.provenance &&
+                classRef.createdAt <= classRef.updatedAt && sub1.submittedAt >= classRef.createdAt;
+            record('K30', 'Record invariants: orgId null, entityVersion monotonic, provenance, timestamps',
+                k30, '');
+
+            act({ id: _kTeacherUser.id });
+            var kclass2 = ED.createClass({
+                id: _kRun + '-class2', name: 'KC2', nameEn: 'KC2', code: 'KC2' + _kRun,
+                teacherId: _kTeacherUser.id, courseIds: [courseRef.id]
+            });
+            var enrolled = ED.addStudentToClass(kclass2.id, _kStudentUser.id);
+            var k32a = enrolled.studentIds.indexOf(_kStudentUser.id) !== -1 &&
+                ED.getStudent(_kStudentUser.id).classIds.indexOf(kclass2.id) !== -1;
+            var removed = ED.removeStudentFromClass(kclass2.id, _kStudentUser.id);
+            var k32b = removed.studentIds.indexOf(_kStudentUser.id) === -1 &&
+                ED.getStudent(_kStudentUser.id).classIds.indexOf(kclass2.id) === -1;
+            var rel = ED.getAssignment(asgFull.id).classId === classRef.id &&
+                ED.getSubmission(sub1.id).assignmentId === asgFull.id &&
+                ED.getSubmission(sub1.id).classId === classRef.id &&
+                ED.getSubmission(sub1.id).studentId === _kStudentUser.id &&
+                ED.getClass(classRef.id).courseIds[0] === courseRef.id;
+            record('K32', 'Relationships: enrollment round-trip sync; all links resolve via getters',
+                k32a && k32b && rel, JSON.stringify({ enrolled: k32a, removed: k32b, links: rel }));
+
+            /* K31: restore the exact baseline captured at suite start */
+            ED.setActor(null);
+            window.CHLDB.set('session', _kSnap.session);
+            window.CHLDB.set('teachers', _kSnapJSON(_kSnap.teachers));
+            window.CHLDB.set('students', _kSnapJSON(_kSnap.students));
+            window.CHLDB.set('courses', _kSnapJSON(_kSnap.courses));
+            window.CHLDB.classes.save(_kSnapJSON(_kSnap.classes));
+            window.CHLDB.assignments.save(_kSnapJSON(_kSnap.assignments));
+            window.CHLDB.submissions.save(_kSnapJSON(_kSnap.submissions));
+            window.CHLDB.results.save(_kSnapJSON(_kSnap.results));
+            window.CHLDB.users.save(_kSnapJSON(_kSnap.users));
+            window.CHL.changeJournal.clear();
+            var k31 = JSON.stringify(window.CHLDB.get('teachers', {})) === JSON.stringify(_kSnap.teachers) &&
+                JSON.stringify(window.CHLDB.get('students', {})) === JSON.stringify(_kSnap.students) &&
+                JSON.stringify(window.CHLDB.get('courses', {})) === JSON.stringify(_kSnap.courses) &&
+                JSON.stringify(window.CHLDB.classes.all()) === JSON.stringify(_kSnap.classes) &&
+                JSON.stringify(window.CHLDB.assignments.all()) === JSON.stringify(_kSnap.assignments) &&
+                JSON.stringify(window.CHLDB.submissions.all()) === JSON.stringify(_kSnap.submissions) &&
+                JSON.stringify(window.CHLDB.results.all()) === JSON.stringify(_kSnap.results) &&
+                JSON.stringify(window.CHLDB.users.all()) === JSON.stringify(_kSnap.users) &&
+                window.CHL.changeJournal.count() === 0 && window.CHLDB.get('session', null) === null;
+            record('K31', 'Cleanup restores exact baseline (stores, users, journal, session)', k31, '');
+        } catch (e) {
+            record('K', 'TASK-011 Education suite FAILED', false, String(e));
+            try {
+                window.Education.setActor(null);
+                window.CHLDB.set('session', null);
+                if (typeof _kSnap !== 'undefined' && _kSnap && _kSnapJSON) {
+                    window.CHLDB.set('teachers', _kSnapJSON(_kSnap.teachers));
+                    window.CHLDB.set('students', _kSnapJSON(_kSnap.students));
+                    window.CHLDB.set('courses', _kSnapJSON(_kSnap.courses));
+                    window.CHLDB.classes.save(_kSnapJSON(_kSnap.classes));
+                    window.CHLDB.assignments.save(_kSnapJSON(_kSnap.assignments));
+                    window.CHLDB.submissions.save(_kSnapJSON(_kSnap.submissions));
+                    window.CHLDB.results.save(_kSnapJSON(_kSnap.results));
+                    window.CHLDB.users.save(_kSnapJSON(_kSnap.users));
+                }
+                window.CHL.changeJournal.clear();
+            } catch (e2) {}
+        }
+
+        /* ---- I. Runtime errors on harness ---- */
+        record('I1', 'No uncaught exceptions / unhandled rejections during harness', runtimeErrors.length === 0,
+            runtimeErrors.length ? runtimeErrors.join(' | ') : 'clean');
+
+        clearInterval(keepalive);
+        document.title = 'HARNESS_DONE';
+        render();
+    }
+
+    run();
+})();
+</script>
+</body>
+</html>

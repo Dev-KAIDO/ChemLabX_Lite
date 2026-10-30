@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>المعمل — ChemLabX 4.0</title>
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="stylesheet" href="css/fonts.css">
+    <link rel="stylesheet" href="css/base.css">
+    <link rel="stylesheet" href="css/components.css">
+    <link rel="stylesheet" href="css/lab.css">
+    <script>
+        (function () {
+            var t = localStorage.getItem('chemlabx_theme');
+            if (t && t !== 'default') document.documentElement.setAttribute('data-theme', t);
+            var l = localStorage.getItem('chemlabx_lang') || 'ar';
+            document.documentElement.lang = l;
+            document.documentElement.dir = l === 'ar' ? 'rtl' : 'ltr';
+        })();
+    </script>
+</head>
+<body>
+    <canvas id="labCanvas" class="lab-canvas" aria-hidden="true"></canvas>
+    <div id="site-nav"></div>
+
+    <div class="app-wrapper">
+        <h1 class="sr-only" data-ar="المعمل الافتراضي" data-en="Virtual laboratory">المعمل الافتراضي</h1>
+
+        <!-- MAIN LAYOUT -->
+        <div class="main-layout">
+
+            <!-- LEFT - Materials Library -->
+            <aside class="sidebar-left" id="materialShelf">
+                <div class="section-title" data-ar="🧪 المواد" data-en="🧪 Materials">🧪 المواد
+                    <span class="count" id="materialCount" data-ar="185 مادة" data-en="185 Materials">185 مادة</span>
+                </div>
+                <input type="text" class="search-box" id="searchMaterials" placeholder="🔍 بحث عن مادة..." aria-label="بحث عن مادة" data-ar-aria-label="بحث عن مادة" data-en-aria-label="Search materials" data-ar-placeholder="🔍 بحث عن مادة..." data-en-placeholder="🔍 Search materials...">
+                <div class="category-filters" id="categoryFilters">
+                    <button class="cat-btn active" data-cat="all" data-ar="الكل" data-en="All">الكل</button>
+                    <button class="cat-btn" data-cat="metal" data-ar="فلزات" data-en="Metals">فلزات</button>
+                    <button class="cat-btn" data-cat="acid" data-ar="حمض" data-en="Acids">حمض</button>
+                    <button class="cat-btn" data-cat="base" data-ar="قاعدة" data-en="Bases">قاعدة</button>
+                    <button class="cat-btn" data-cat="salt" data-ar="ملح" data-en="Salts">ملح</button>
+                    <button class="cat-btn" data-cat="oxide" data-ar="أكسيد" data-en="Oxides">أكسيد</button>
+                    <button class="cat-btn" data-cat="organic" data-ar="عضوي" data-en="Organic">عضوي</button>
+                </div>
+                <div id="materialsContainer"></div>
+                <div id="toolsContainer"></div>
+            </aside>
+
+            <!-- WORKBENCH -->
+            <main class="workbench" id="workbench">
+                <div class="bench-header">
+                    <h2 data-ar="🔬 طاولة المعمل" data-en="🔬 Workbench">🔬 طاولة المعمل
+                        <span style="font-size:12px;font-weight:400;color:var(--text-secondary);" data-ar="اسحب المواد من الرف" data-en="Drag materials from shelf">اسحب المواد من الرف</span>
+                    </h2>
+                    <div class="bench-controls">
+                        <button class="zoom-btn" id="zoomIn" title="تكبير" aria-label="تكبير" data-ar-aria-label="تكبير" data-en-aria-label="Zoom in">+</button>
+                        <span class="zoom-level" id="zoomLevel">100%</span>
+                        <button class="zoom-btn" id="zoomOut" title="تصغير" aria-label="تصغير" data-ar-aria-label="تصغير" data-en-aria-label="Zoom out">−</button>
+                        <button class="zoom-btn" id="zoomReset" title="إعادة ضبط" aria-label="إعادة ضبط التكبير" data-ar-aria-label="إعادة ضبط التكبير" data-en-aria-label="Reset zoom">⟲</button>
+                        <div class="status">
+                            <span class="status-dot" id="statusDot"></span>
+                            <span id="benchStatus">جاهز</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="drop-zone" id="dropZone">
+                    <div style="position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);color:var(--text-secondary);font-size:13px;text-align:center;pointer-events:none;z-index:1;transition:opacity 0.3s;" id="placeholderText">
+                        <span data-ar="🖱️ اسحب المواد والأدوات إلى هنا" data-en="🖱️ Drag materials here">🖱️ اسحب المواد والأدوات إلى هنا</span><br>
+                        <span style="font-size:11px;" data-ar='ثم اضغط "🧪 خلط" أو Enter لبدء التفاعل' data-en='Then press "🧪 Mix" or Enter'>ثم اضغط "🧪 خلط" أو Enter لبدء التفاعل</span>
+                    </div>
+                    <div class="bench-assignment-banner" id="asgBanner" style="display:none;"></div>
+                </div>
+            </main>
+
+            <!-- RIGHT SIDEBAR -->
+            <aside class="sidebar-right" id="infoPanel">
+                <div class="sidebar-section">
+                    <div class="sidebar-section-title" data-ar="📊 معلومات المعمل" data-en="📊 Lab Info">📊 معلومات المعمل</div>
+                    <div class="info-card">
+                        <div class="info-grid">
+                            <div><div class="label" data-ar="🌡️ الحرارة" data-en="🌡️ Temp">🌡️ الحرارة</div><div class="value green" id="tempDisplay">25.0 °C</div></div>
+                            <div><div class="label" data-ar="🧪 pH" data-en="🧪 pH">🧪 pH</div><div class="value blue" id="phDisplay">7.0</div></div>
+                            <div><div class="label" data-ar="🧬 المواد" data-en="🧬 Items">🧬 المواد</div><div class="value" id="itemCount" style="color:var(--text-primary);">0</div></div>
+                            <div><div class="label" data-ar="⚡ الحالة" data-en="⚡ Status">⚡ الحالة</div><div class="value" id="reactionStatus" style="font-size:13px;color:var(--text-secondary);">⏸️ خامل</div></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="sidebar-section">
+                    <div class="sidebar-section-title" data-ar="📐 القياسات" data-en="📐 Measurements">📐 القياسات</div>
+                    <div class="info-card">
+                        <div class="measure-control">
+                            <input type="number" id="qtyInput" value="5" min="0.1" max="100" step="0.1" style="width:70px;" aria-label="الكمية" data-ar-aria-label="الكمية" data-en-aria-label="Amount">
+                            <select id="qtyUnit" style="width:80px;">
+                                <option value="ml">مل</option>
+                                <option value="g">جرام</option>
+                                <option value="mol">مول</option>
+                                <option value="drop">قطرة</option>
+                            </select>
+                        </div>
+                        <button class="btn-action qty-apply-btn" id="applyQty" data-ar="✓ تطبيق الكمية" data-en="✓ Apply Quantity">✓ تطبيق الكمية</button>
+                        <div style="font-size:10px;color:var(--text-secondary);margin-top:6px;" data-ar="💡 حدد الكمية ثم اضغط تطبيق قبل السحب" data-en="💡 Set quantity then Apply before dragging">💡 حدد الكمية ثم اضغط تطبيق قبل السحب</div>
+                    </div>
+                </div>
+                <div class="sidebar-section">
+                    <div class="sidebar-section-title" data-ar="⚡ أدوات التحكم" data-en="⚡ Controls">⚡ أدوات التحكم</div>
+                    <div class="info-card">
+                        <button class="btn-action mix" id="mixBtn" data-ar="🧪 خلط التفاعل" data-en="🧪 Mix">🧪 خلط التفاعل</button>
+                        <div style="height:10px;"></div>
+                        <div class="action-buttons">
+                            <button class="btn-action heat" id="heatBtn" data-ar="🔥 تسخين" data-en="🔥 Heat">🔥 تسخين</button>
+                            <button class="btn-action cool-btn" id="coolBtn" data-ar="❄️ تبريد" data-en="❄️ Cool">❄️ تبريد</button>
+                            <button class="btn-action stir-btn" id="stirBtn" data-ar="🌀 تحريك" data-en="🌀 Stir">🌀 تحريك</button>
+                            <button class="btn-action pressure-btn" id="pressureBtn" data-ar="💨 ضغط" data-en="💨 Pressure">💨 ضغط</button>
+                            <button class="btn-action filter-btn" id="filterBtn" data-ar="🧫 ترشيح" data-en="🧫 Filter">🧫 ترشيح</button>
+                            <button class="btn-action undo-btn" id="undoBtn" title="تراجع (Ctrl+Z)" data-ar="↩️ تراجع" data-en="↩️ Undo">↩️ تراجع</button>
+                            <button class="btn-action reset" id="resetBtn" data-ar="🗑️ إعادة" data-en="🗑️ Reset">🗑️ إعادة</button>
+                        </div>
+                    </div>
+                </div>
+                <div class="sidebar-section">
+                    <div class="product-panel" id="productPanel">
+                        <div class="product-header">
+                            <h4 data-ar="🧬 نواتج التفاعل" data-en="🧬 Products">🧬 نواتج التفاعل</h4>
+                            <button class="product-clear" id="productClear" title="إخفاء">✕</button>
+                        </div>
+                        <div class="product-equation" id="productEquation"></div>
+                        <div class="product-changes" id="productChanges"></div>
+                        <div class="molecule-3d-wrap" id="molecule3dWrap" style="display:none;">
+                            <div class="molecule-3d" id="molecule3d"></div>
+                            <div class="molecule-3d-label" data-ar="عرض ثلاثي الأبعاد" data-en="3D view">عرض ثلاثي الأبعاد</div>
+                        </div>
+                        <div class="product-list" id="productList"></div>
+                    </div>
+                </div>
+                <div class="sidebar-section" style="flex:1;">
+                    <div class="sidebar-section-title">
+                        <span data-ar="📜 السجل" data-en="📜 Log">📜 السجل</span>
+                        <button class="log-full-btn" id="openFullLog" title="عرض السجل الكامل" data-ar="📋 عرض كامل" data-en="📋 Full Log">📋 عرض كامل</button>
+                    </div>
+                    <div class="info-card" style="flex:1;min-height:100px;">
+                        <div class="reaction-log" id="logContainer">
+                            <div class="log-entry"><span class="time">--:--</span><span style="color:var(--text-secondary);">🚀 ChemLabX 4.0 جاهز!</span></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="sidebar-section">
+                    <div class="sidebar-section-title" data-ar="🏆 التقييم" data-en="🏆 Score">🏆 التقييم</div>
+                    <div class="info-card">
+                        <div class="score-display">
+                            <div class="score-item"><span class="score-label" data-ar="نقاط الخبرة" data-en="XP">نقاط الخبرة</span><span class="score-value purple" id="xpDisplay">0 XP</span></div>
+                            <div class="score-divider"></div>
+                            <div class="score-item"><span class="score-label" data-ar="المستوى" data-en="Level">المستوى</span><span class="score-value green" id="levelDisplay">🥉 مبتدئ</span></div>
+                        </div>
+                        <div style="height:12px;"></div>
+                        <a class="btn-action quiz-btn" href="quiz.html" id="testBtn" style="display:block;text-align:center;text-decoration:none;" data-ar="📝 ابدأ الاختبار" data-en="📝 Start Quiz">📝 ابدأ الاختبار</a>
+                    </div>
+                </div>
+            </aside>
+        </div>
+    </div>
+
+    <!-- REACTION DETAIL MODAL -->
+    <div class="detail-overlay" id="detailModal">
+        <div class="detail-card">
+            <div class="detail-header">
+                <h3 id="detailTitle" data-ar="تفاصيل التفاعل" data-en="Reaction Details">تفاصيل التفاعل</h3>
+                <button type="button" class="detail-close" id="detailClose" aria-label="إغلاق" data-ar-aria-label="إغلاق" data-en-aria-label="Close">✕</button>
+            </div>
+            <div class="detail-body" id="detailBody"></div>
+        </div>
+    </div>
+
+    <!-- FULL LOG MODAL -->
+    <div class="detail-overlay" id="fullLogModal">
+        <div class="detail-card" style="max-width:700px;">
+            <div class="detail-header">
+                <h3 id="fullLogTitle" data-ar="📜 سجل التفاعلات الكامل" data-en="📜 Full Reaction Log">📜 سجل التفاعلات الكامل</h3>
+                <button type="button" class="detail-close" id="fullLogClose" aria-label="إغلاق" data-ar-aria-label="إغلاق" data-en-aria-label="Close">✕</button>
+            </div>
+            <div class="detail-body">
+                <div class="full-log-stats" id="fullLogStats"></div>
+                <div class="full-log-list" id="fullLogList"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="toast-container" id="toastContainer"></div>
+
+    <script src="js/core/i18n.js"></script>
+    <script src="js/core/versions.js"></script>
+    <script src="js/core/dataport.js"></script>
+    <script src="js/core/db.js"></script>
+    <script src="js/core/auth.js"></script>
+    <script src="js/core/ui.js"></script>
+    <script src="js/data/materials.js"></script>
+    <script src="js/data/reactions.js"></script>
+    <script src="js/data/achievements.js"></script>
+    <script src="js/domain/chemistry.js"></script>
+    <script src="js/domain/laboratory.js"></script>
+    <script src="js/domain/safety.js"></script>
+    <script src="js/domain/results.js"></script>
+    <script src="js/lab/particles.js"></script>
+    <script src="js/lab/effects.js"></script>
+    <script src="js/lab/shelf.js"></script>
+    <script src="js/lab/bench.js"></script>
+    <script src="js/lab/engine.js"></script>
+    <script src="js/lab/lab.js"></script>
+</body>
+</html>

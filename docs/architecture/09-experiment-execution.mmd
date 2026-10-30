@@ -1,0 +1,16 @@
+sequenceDiagram
+    participant S as Student
+    participant L as Lab Session (Application)
+    participant C as Chemistry Engine
+    participant F as Safety Engine
+    participant R as Result Store
+    S->>L: add materials, quantities, concentrations, conditions
+    L->>F: evaluate(state, safetyModelVersion)
+    F-->>L: RiskVerdict
+    alt Safe / Warning (PPE met)
+        L->>C: determine(state, chemistryDataVersion)
+        C-->>L: DeterminationResult (balanced, quantities, deltaH, products)
+        L->>R: record step + versions + action + timestamp
+    else Dangerous / Critical
+        L->>S: warning / PPE prompt / block with emergency procedure
+    end

@@ -1,0 +1,27 @@
+flowchart TB
+    subgraph Clients["Client Layer"]
+        PWA["Web/PWA Client"]
+        GUEST["Independent / Guest Client"]
+    end
+    subgraph App["Application & Domain Layer"]
+        APP["Application Use-Cases (education, lab sessions, admin)"]
+        CHEM["Chemistry Engine (deterministic, versioned)"]
+        SAFE["Safety Engine (deterministic, versioned)"]
+        CONTENT["Content & Datasets"]
+    end
+    subgraph Edge["School / Org Site (LAN)"]
+        SRV["Site Server (Node/Go + SQLite)"]
+        LANDB[(Site Database)]
+    end
+    subgraph Cloud["ChemLabX Cloud (optional)"]
+        API["Cloud API"]
+        CDB[(Cloud Database)]
+    end
+    PWA --> APP
+    GUEST --> PWA
+    APP --> CHEM & SAFE & CONTENT
+    PWA -->|LAN HTTP/WSS| SRV
+    PWA -.->|fallback: device IndexedDB + journal| PWA
+    SRV --> LANDB
+    SRV <-->|Sync Engine| API
+    API --> CDB

@@ -1,0 +1,11 @@
+flowchart TD
+    UI["UI (renders representations & verdicts only)"] --> CMD["Application: laboratory command"]
+    CMD --> CHEM["Chemistry Engine (pure, versioned)"]
+    CMD --> SAFE["Safety Engine (pure, versioned)"]
+    CHEM --> DATASET["Pinned Chemistry Dataset"]
+    SAFE --> SAFEMODEL["Pinned Safety Model"]
+    SAFE -->|read-only ports| DATASET
+    CHEM --> RESULT["DeterminationResult (pure data)"]
+    SAFE --> VERDICT["RiskVerdict (Safe/Warning/Dangerous/Critical)"]
+    RESULT --> UI
+    VERDICT --> UI

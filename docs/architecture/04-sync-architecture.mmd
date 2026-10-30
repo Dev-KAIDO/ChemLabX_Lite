@@ -1,0 +1,10 @@
+flowchart LR
+    AC["Local mutation"] --> J["ChangeRecord: changeId, entity, version, payload"]
+    J --> Q["Journal / Outbox (persists)"]
+    Q --> S["Sync Engine (retry/backoff; partial by cursor)"]
+    S -->|push since cursor| SRV["Site/Cloud Server"]
+    SRV --> V["Validate + dedupe (changeId / resubmission key)"]
+    V --> DB[(DB)]
+    DB -->|ack + new cursor| S
+    S --> M["Conflict policy per resource (LWW / ConflictRecord / attemptNo)"]
+    M --> F["Subsequent replica position"]

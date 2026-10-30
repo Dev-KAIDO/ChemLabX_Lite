@@ -1,0 +1,8 @@
+flowchart LR
+    U["User"] --> PWA["PWA"]
+    PWA --> L[(Local IndexedDB + journal)]
+    PWA -->|sync| API["Cloud API (TLS)"]
+    API --> AUTH["Identity / Auth"]
+    API --> ORG["Organization services"]
+    API --> DB[(Cloud Database)]
+    API --> SYNC["Sync service (journal, cursors)"]

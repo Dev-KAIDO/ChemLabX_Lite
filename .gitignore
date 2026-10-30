@@ -1,0 +1,31 @@
+# OS / editor
+.DS_Store
+Thumbs.db
+desktop.ini
+.vs/
+.vscode/
+.idea/
+
+# Python bytecode / caches
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Node (not used at runtime, just in case)
+node_modules/
+npm-debug.log*
+
+# Logs and local test output
+*.log
+test/tmp/
+test/results/
+test/server.out
+
+# Secrets / local env
+.env
+.env.*
+!.env.example
+
+# OS-generated archives
+*.zip
+*.7z

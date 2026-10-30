@@ -1,0 +1,25 @@
+flowchart TB
+    UI["Presentation / UI"]
+    APP["Application Layer (use-cases)"]
+    subgraph Core["Core Domains"]
+        EDU[Education]
+        LAB[Laboratory]
+        CHEM[Chemistry]
+        SAFE[Safety]
+    end
+    subgraph Support["Support Domains"]
+        ID[Identity]; ORG[Organization]; AUTH[Authorization]
+        CON[Content]; ASS[Assessment]; AN[Analytics]
+        LIC[Licensing]; VIS[Visualization]; ADM[Administration]
+    end
+    subgraph Infra["Infrastructure Domains"]
+        SYNC[Synchronization]; STORE[Storage]
+    end
+    UI --> APP
+    APP --> EDU & LAB
+    LAB --> CHEM & SAFE
+    APP --> ID & ORG & AUTH & CON & ASS & AN & LIC & ADM
+    SAFE --> CHEM
+    CON --> CHEM
+    APP --> SYNC
+    CHEM --> STORE

@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ChemLabX 4.0 — المعمل الافتراضي المتطور</title>
+    <meta name="description" content="معمل كيمياء افتراضي متكامل: تجارب تفاعلية، دروس، اختبارات، فصول وواجبات — يعمل بدون إنترنت.">
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="apple-touch-icon" href="assets/icon-512.png">
+    <link rel="stylesheet" href="css/fonts.css">
+    <link rel="stylesheet" href="css/base.css">
+    <link rel="stylesheet" href="css/components.css">
+    <link rel="stylesheet" href="css/landing.css">
+    <script>
+        (function () {
+            var t = localStorage.getItem('chemlabx_theme');
+            if (t && t !== 'default') document.documentElement.setAttribute('data-theme', t);
+            var l = localStorage.getItem('chemlabx_lang') || 'ar';
+            document.documentElement.lang = l;
+            document.documentElement.dir = l === 'ar' ? 'rtl' : 'ltr';
+        })();
+    </script>
+</head>
+<body>
+    <a class="skip-link" href="#mainContent" data-ar="تخطي إلى المحتوى" data-en="Skip to content">تخطي إلى المحتوى</a>
+    <div class="landing-bg" id="landingBg" aria-hidden="true"></div>
+    <canvas id="landingCanvas" class="landing-canvas" aria-hidden="true"></canvas>
+
+    <header class="landing-header">
+        <div class="landing-logo">
+            <span class="icon">🧪</span> ChemLabX<span class="version">4.0</span>
+        </div>
+        <div class="landing-nav">
+            <button class="btn-lang" id="langToggle">EN</button>
+            <a href="login.html" class="btn btn-ghost btn-sm" data-ar="دخول" data-en="Login">دخول</a>
+            <a href="register.html" class="btn btn-primary btn-sm" data-ar="إنشاء حساب" data-en="Sign Up">إنشاء حساب</a>
+        </div>
+    </header>
+
+    <main class="landing-hero" id="mainContent" tabindex="-1">
+        <div class="hero-badge" data-ar="🧪 معمل كيمياء افتراضي متكامل" data-en="🧪 A complete virtual chemistry lab">🧪 معمل كيمياء افتراضي متكامل</div>
+        <h1 class="hero-title"><span data-ar="جَرِّب الكيمياء بأمان،" data-en="Experiment with chemistry safely,">جَرِّب الكيمياء بأمان،</span><br><span class="grad" data-ar="دون مختبر حقيقي" data-en="without a real lab">دون مختبر حقيقي</span></h1>
+        <p class="hero-sub" data-ar="أكثر من 185 مادة كيميائية، 25+ تفاعل تفاعلي، دروس، اختبارات، فصول وواجبات — كل ذلك يعمل أونلاين ودون إنترنت."
+            data-en="185+ chemicals, 25+ interactive reactions, lessons, quizzes, classes & assignments — working online and offline.">أكثر من 185 مادة كيميائية، 25+ تفاعل تفاعلي، دروس، اختبارات، فصول وواجبات — كل ذلك يعمل أونلاين ودون إنترنت.</p>
+        <div class="hero-cta">
+            <a href="register.html" class="btn btn-primary btn-lg" data-ar="🚀 ابدأ مجاناً" data-en="🚀 Get Started Free">🚀 ابدأ مجاناً</a>
+            <a href="lab.html" class="btn btn-ghost btn-lg" data-ar="🔬 جرّب المعمل كزائر" data-en="🔬 Try the lab as guest">🔬 جرّب المعمل كزائر</a>
+        </div>
+
+        <div class="hero-stats">
+            <div class="stat"><div class="stat-value">185</div><div class="stat-label" data-ar="مادة كيميائية" data-en="Chemicals">مادة كيميائية</div></div>
+            <div class="stat"><div class="stat-value">25+</div><div class="stat-label" data-ar="تفاعل" data-en="Reactions">تفاعل</div></div>
+            <div class="stat"><div class="stat-value">20</div><div class="stat-label" data-ar="سؤال اختبار" data-en="Quiz questions">سؤال اختبار</div></div>
+            <div class="stat"><div class="stat-value">100%</div><div class="stat-label" data-ar="يعمل دون إنترنت" data-en="Offline ready">يعمل دون إنترنت</div></div>
+        </div>
+    </main>
+
+    <section class="landing-section">
+        <h2 class="section-head" data-ar="كل ما يحتاجه المعمل الافتراضي" data-en="Everything a virtual lab needs">كل ما يحتاجه المعمل الافتراضي</h2>
+        <div class="feature-grid">
+            <div class="feature-card">
+                <div class="feature-icon">⚗️</div>
+                <h3 data-ar="سحب وإفلات حر" data-en="Free drag & drop">سحب وإفلات حر</h3>
+                <p data-ar="اسحب المواد من الرف إلى طاولة المعمل وحركها بحرية كاملة مع أدوات تسخين وتحريك وترشيح."
+                    data-en="Drag materials from the shelf to the workbench and move them freely with heating, stirring and filtering tools.">اسحب المواد من الرف إلى طاولة المعمل وحركها بحرية كاملة مع أدوات تسخين وتحريك وترشيح.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">🧬</div>
+                <h3 data-ar="تأثيرات ثلاثية الأبعاد" data-en="3D visual effects">تأثيرات ثلاثية الأبعاد</h3>
+                <p data-ar="عرض جزيئي ثلاثي الأبعاد للتفاعلات مع جسيمات متحركة ورسوم متحركة غامرة."
+                    data-en="3D molecular views of reactions with animated particles and immersive visuals.">عرض جزيئي ثلاثي الأبعاد للتفاعلات مع جسيمات متحركة ورسوم متحركة غامرة.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">🏫</div>
+                <h3 data-ar="فصول وواجبات" data-en="Classes & assignments">فصول وواجبات</h3>
+                <p data-ar="المعلم يدير فصلاً وطلاباً، ويوزع واجبات يراها الطالب ويكملها مباشرة."
+                    data-en="Teachers manage classes and students, and assign work that students complete directly.">المعلم يدير فصلاً وطلاباً، ويوزع واجبات يراها الطالب ويكملها مباشرة.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">📊</div>
+                <h3 data-ar="لوحة تحكم إدارية" data-en="Admin dashboard">لوحة تحكم إدارية</h3>
+                <p data-ar="تحكم كامل بالمستخدمين والفصول والواجبات وتتبع التقدم في مكان واحد."
+                    data-en="Full control over users, classes, assignments and progress tracking in one place.">تحكم كامل بالمستخدمين والفصول والواجبات وتتبع التقدم في مكان واحد.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">📶</div>
+                <h3 data-ar="يعمل أونلاين ودون إنترنت" data-en="Online & offline">يعمل أونلاين ودون إنترنت</h3>
+                <p data-ar="تثبَّت كتطبيق ويب واستمر بالعمل حتى بدون اتصال بالإنترنت."
+                    data-en="Install as a web app and keep working even without an internet connection.">تثبَّت كتطبيق ويب واستمر بالعمل حتى بدون اتصال بالإنترنت.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">🏆</div>
+                <h3 data-ar="إنجازات ومستويات" data-en="Achievements & levels">إنجازات ومستويات</h3>
+                <p data-ar="اجمع نقاط الخبرة وافتح الإنجازات وارتقِ من مبتدئ إلى عبقري."
+                    data-en="Earn XP, unlock achievements and rise from beginner to genius.">اجمع نقاط الخبرة وافتح الإنجازات وارتقِ من مبتدئ إلى عبقري.</p>
+            </div>
+        </div>
+    </section>
+
+    <section class="landing-section roles-section">
+        <h2 class="section-head" data-ar="مصمم للمعلمين والطلاب والإداريين" data-en="Built for teachers, students & admins">مصمم للمعلمين والطلاب والإداريين</h2>
+        <div class="roles-grid">
+            <div class="role-card role-admin">
+                <div class="role-icon">🛡️</div>
+                <h3 data-ar="المسؤول" data-en="Admin">المسؤول</h3>
+                <p data-ar="إدارة كاملة: مستخدمون، أدوار، فصول، واجبات، ومراقبة التقدم."
+                    data-en="Full management: users, roles, classes, assignments and progress monitoring.">إدارة كاملة: مستخدمون، أدوار، فصول، واجبات، ومراقبة التقدم.</p>
+            </div>
+            <div class="role-card role-teacher">
+                <div class="role-icon">👨‍🏫</div>
+                <h3 data-ar="المعلم" data-en="Teacher">المعلم</h3>
+                <p data-ar="أنشئ فصلك، أضف طلابك، ووزّع تجارب واختبارات وتابع إنجازهم."
+                    data-en="Create your class, add students, assign experiments and quizzes, and track their work.">أنشئ فصلك، أضف طلابك، ووزّع تجارب واختبارات وتابع إنجازهم.</p>
+            </div>
+            <div class="role-card role-student">
+                <div class="role-icon">🎓</div>
+                <h3 data-ar="الطالب" data-en="Student">الطالب</h3>
+                <p data-ar="انضم إلى فصولك، شاهد واجبات معلمك، وأنجزها بالمعمل والاختبار."
+                    data-en="Join your classes, view your teacher's assignments and complete them in the lab and quiz.">انضم إلى فصولك، شاهد واجبات معلمك، وأنجزها بالمعمل والاختبار.</p>
+            </div>
+            <div class="role-card role-user">
+                <div class="role-icon">🧑‍🔬</div>
+                <h3 data-ar="المستخدم المستقل" data-en="Independent user">المستخدم المستقل</h3>
+                <p data-ar="استكشف المعمل والدروس والاختبارات بحسابك الخاص وتتبع تقدمك."
+                    data-en="Explore the lab, lessons and quizzes with your own account and track your progress.">استكشف المعمل والدروس والاختبارات بحسابك الخاص وتتبع تقدمك.</p>
+            </div>
+        </div>
+    </section>
+
+    <section class="landing-cta">
+        <h2 data-ar="جاهز للتجربة؟" data-en="Ready to experiment?">جاهز للتجربة؟</h2>
+        <p data-ar="أنشئ حسابك خلال ثوانٍ وابدأ رحلتك الكيميائية." data-en="Create your account in seconds and start your chemistry journey.">أنشئ حسابك خلال ثوانٍ وابدأ رحلتك الكيميائية.</p>
+        <a href="register.html" class="btn btn-primary btn-lg" data-ar="🚀 إنشاء حساب مجاني" data-en="🚀 Create a free account">🚀 إنشاء حساب مجاني</a>
+    </section>
+
+    <footer class="landing-footer">
+        <p>🧪 ChemLabX 4.0 — <span data-ar="المعمل الافتراضي المتطور" data-en="The advanced virtual lab">المعمل الافتراضي المتطور</span></p>
+        <p class="muted" data-ar="يعمل دون إنترنت • قابل للتثبيت • جاهز للمدارس والجامعات"
+            data-en="Offline ready • Installable • Ready for schools & universities">يعمل دون إنترنت • قابل للتثبيت • جاهز للمدارس والجامعات</p>
+    </footer>
+
+    <div class="toast-container" id="toastContainer"></div>
+
+    <script src="js/core/i18n.js"></script>
+    <script src="js/core/versions.js"></script>
+    <script src="js/core/dataport.js"></script>
+    <script src="js/core/db.js"></script>
+    <script src="js/core/auth.js"></script>
+    <script src="js/core/ui.js"></script>
+    <script src="js/pages/landing.js"></script>
+</body>
+</html>

@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>تسجيل الدخول — ChemLabX 4.0</title>
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="stylesheet" href="css/fonts.css">
+    <link rel="stylesheet" href="css/base.css">
+    <link rel="stylesheet" href="css/components.css">
+    <link rel="stylesheet" href="css/auth.css">
+    <script>
+        (function () {
+            var t = localStorage.getItem('chemlabx_theme');
+            if (t && t !== 'default') document.documentElement.setAttribute('data-theme', t);
+            var l = localStorage.getItem('chemlabx_lang') || 'ar';
+            document.documentElement.lang = l;
+            document.documentElement.dir = l === 'ar' ? 'rtl' : 'ltr';
+        })();
+    </script>
+</head>
+<body>
+    <div class="login-screen">
+        <div class="login-bg" aria-hidden="true"></div>
+        <canvas id="authCanvas" class="auth-canvas" aria-hidden="true"></canvas>
+
+        <main class="login-card">
+            <a href="index.html" class="auth-back" data-ar="← الرئيسية" data-en="← Home">← الرئيسية</a>
+            <button type="button" class="btn-lang auth-lang" id="langToggle">EN</button>
+            <div class="login-logo" aria-hidden="true">🧪</div>
+            <h1 class="login-title">ChemLabX 4.0</h1>
+            <p class="login-subtitle" data-ar="سجّل دخولك للمتابعة" data-en="Sign in to continue">سجّل دخولك للمتابعة</p>
+
+            <div class="login-form">
+                <div class="login-input-group">
+                    <input type="email" id="authEmail" placeholder="البريد الإلكتروني" aria-label="البريد الإلكتروني" data-ar-aria-label="البريد الإلكتروني" data-en-aria-label="Email address" data-ar-placeholder="البريد الإلكتروني" data-en-placeholder="Email address" autocomplete="email">
+                </div>
+                <div class="login-input-group">
+                    <input type="password" id="authPassword" placeholder="كلمة المرور" aria-label="كلمة المرور" data-ar-aria-label="كلمة المرور" data-en-aria-label="Password" data-ar-placeholder="كلمة المرور" data-en-placeholder="Password" autocomplete="current-password">
+                </div>
+                <div class="auth-error" id="authError" role="alert" aria-live="assertive" aria-atomic="true"></div>
+                <button type="button" class="login-btn" id="authSubmit" data-ar="🚀 دخول" data-en="🚀 Sign In">🚀 دخول</button>
+                <div class="login-hint">
+                    <span data-ar="تجربة: admin@chemlabx.com / admin123" data-en="Demo: admin@chemlabx.com / admin123">تجربة: admin@chemlabx.com / admin123</span>
+                </div>
+            </div>
+
+            <div class="auth-alt">
+                <span data-ar="ليس لديك حساب؟" data-en="Don't have an account?">ليس لديك حساب؟</span>
+                <a href="register.html" data-ar="إنشاء حساب" data-en="Sign up">إنشاء حساب</a>
+            </div>
+            <div class="auth-alt">
+                <a href="lab.html" data-ar="🔬 الدخول كزائر" data-en="🔬 Continue as guest">🔬 الدخول كزائر</a>
+            </div>
+        </main>
+    </div>
+
+    <div class="toast-container" id="toastContainer"></div>
+
+    <script src="js/core/i18n.js"></script>
+    <script src="js/core/versions.js"></script>
+    <script src="js/core/dataport.js"></script>
+    <script src="js/core/db.js"></script>
+    <script src="js/core/auth.js"></script>
+    <script src="js/core/ui.js"></script>
+    <script src="js/lab/particles.js"></script>
+    <script src="js/pages/auth.js"></script>
+</body>
+</html>

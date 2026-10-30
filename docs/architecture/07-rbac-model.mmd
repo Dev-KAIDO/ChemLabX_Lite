@@ -1,0 +1,10 @@
+flowchart LR
+    US["User (account)"] --> MEM["Membership (org, role)"]
+    US --> RB["RoleAssignment"]
+    RB --> PERMS["Permission set: action+resource+scope"]
+    ORG["Organization policy"] --> PERMS
+    RES["Resource"] --> SCOPES["Scope chain: self , class:<id> , org:<id> , platform"]
+    PERMS --> PDP["Policy Decision Point (can?)"]
+    SCOPES --> PDP
+    PDP -->|allow/deny| ENF["Enforcement Points (app + domain)"]
+    PDP -->|render hints only| UI

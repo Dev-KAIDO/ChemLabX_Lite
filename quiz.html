@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>الاختبار — ChemLabX 4.0</title>
+    <link rel="manifest" href="manifest.webmanifest">
+    <link rel="stylesheet" href="css/fonts.css">
+    <link rel="stylesheet" href="css/base.css">
+    <link rel="stylesheet" href="css/components.css">
+    <link rel="stylesheet" href="css/quiz.css">
+    <script>
+        (function () {
+            var t = localStorage.getItem('chemlabx_theme');
+            if (t && t !== 'default') document.documentElement.setAttribute('data-theme', t);
+            var l = localStorage.getItem('chemlabx_lang') || 'ar';
+            document.documentElement.lang = l;
+            document.documentElement.dir = l === 'ar' ? 'rtl' : 'ltr';
+        })();
+    </script>
+</head>
+<body>
+    <div id="site-nav"></div>
+
+    <div class="app-wrapper">
+        <main class="quiz-page">
+            <div class="quiz-container" id="quizContainer">
+                <div class="quiz-header">
+                    <h1 data-ar="📝 اختبار الكيمياء" data-en="📝 Chemistry Quiz">📝 اختبار الكيمياء</h1>
+                    <p class="sr-only" id="quizStatus" role="status" aria-live="polite"></p>
+                    <div class="quiz-stats">
+                        <div class="quiz-stat"><span class="quiz-stat-value" id="quizScore">0</span><span class="quiz-stat-label" data-ar="النتيجة" data-en="Score">النتيجة</span></div>
+                        <div class="quiz-stat"><span class="quiz-stat-value" id="quizXP">0</span><span class="quiz-stat-label">XP</span></div>
+                        <div class="quiz-stat"><span class="quiz-stat-value" id="quizTimer">00:00</span><span class="quiz-stat-label" data-ar="الوقت" data-en="Time">الوقت</span></div>
+                        <div class="quiz-stat"><span class="quiz-stat-value" id="quizQuestionNum">0/10</span><span class="quiz-stat-label" data-ar="سؤال" data-en="Q">سؤال</span></div>
+                    </div>
+                    <div class="quiz-progress" id="quizProgress" role="progressbar" aria-valuemin="0" aria-valuemax="10" aria-valuenow="0" aria-valuetext="0 / 10" data-ar-aria-label="تقدم الاختبار" data-en-aria-label="Quiz progress" aria-label="تقدم الاختبار"></div>
+                </div>
+                <div class="quiz-body" id="quizBody">
+                    <div class="quiz-idle" id="quizIdle">
+                        <div class="quiz-idle-icon">🧪</div>
+                        <h3 data-ar="جاهز للاختبار؟" data-en="Ready to quiz?">جاهز للاختبار؟</h3>
+                        <p data-ar="10 أسئلة عشوائية من مواضيع متنوعة. كل إجابة صحيحة تكسبك 15 XP." data-en="10 random questions from various topics. Each correct answer earns you 15 XP.">10 أسئلة عشوائية من مواضيع متنوعة. كل إجابة صحيحة تكسبك 15 XP.</p>
+                        <button class="quiz-start-btn" id="quizStart" data-ar="🚀 ابدأ الاختبار" data-en="🚀 Start Quiz">🚀 ابدأ الاختبار</button>
+                        <div class="quiz-best" id="quizBestInfo"></div>
+                    </div>
+                </div>
+                <div class="quiz-footer">
+                    <button class="quiz-next-btn" id="quizNext" disabled data-ar="التالي ←" data-en="Next →">التالي ←</button>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <div class="toast-container" id="toastContainer"></div>
+
+    <script src="js/core/i18n.js"></script>
+    <script src="js/core/versions.js"></script>
+    <script src="js/core/dataport.js"></script>
+    <script src="js/core/db.js"></script>
+    <script src="js/core/auth.js"></script>
+    <script src="js/core/ui.js"></script>
+    <script src="js/data/achievements.js"></script>
+    <script src="js/pages/quiz.js"></script>
+</body>
+</html>

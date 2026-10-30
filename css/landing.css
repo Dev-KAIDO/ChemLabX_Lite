@@ -1,0 +1,231 @@
+/* ==========================================================================
+   ChemLabX 4.0 — Landing page styles
+   ========================================================================== */
+
+.landing-bg {
+    position: fixed;
+    inset: 0;
+    z-index: -2;
+    pointer-events: none;
+    background:
+        radial-gradient(ellipse at 15% 30%, rgba(var(--accent-green-rgb),0.1) 0%, transparent 55%),
+        radial-gradient(ellipse at 85% 15%, rgba(var(--accent-blue-rgb),0.12) 0%, transparent 50%),
+        radial-gradient(ellipse at 50% 85%, rgba(var(--accent-purple-rgb),0.1) 0%, transparent 55%);
+    animation: loginPulse 10s ease-in-out infinite alternate;
+}
+.landing-canvas {
+    position: fixed;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+    opacity: 0.55;
+}
+
+.landing-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 22px 40px;
+    position: relative;
+    z-index: 2;
+}
+.landing-logo {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    font-size: 26px;
+    font-weight: 900;
+    background: linear-gradient(135deg, var(--accent-green), var(--accent-teal), var(--accent-blue), var(--accent-purple));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+.landing-logo .icon {
+    font-size: 32px;
+    -webkit-text-fill-color: initial;
+    filter: drop-shadow(0 0 12px rgba(var(--accent-green-rgb),0.4));
+}
+.landing-logo .version {
+    font-size: 11px;
+    background: linear-gradient(135deg, var(--accent-purple), var(--accent-pink));
+    color: var(--on-bright);
+    -webkit-text-fill-color: var(--on-bright);
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-weight: 700;
+}
+.landing-nav { display: flex; align-items: center; gap: 10px; }
+
+.landing-hero {
+    text-align: center;
+    padding: 60px 24px 40px;
+    position: relative;
+    z-index: 1;
+}
+.hero-badge {
+    display: inline-block;
+    background: rgba(var(--accent-purple-rgb),0.12);
+    border: 1px solid rgba(var(--accent-purple-rgb),0.3);
+    color: var(--accent-purple);
+    font-size: 13px;
+    font-weight: 700;
+    padding: 8px 20px;
+    border-radius: 40px;
+    margin-bottom: 24px;
+}
+.hero-title {
+    font-size: clamp(34px, 6vw, 64px);
+    font-weight: 900;
+    line-height: 1.25;
+    margin-bottom: 20px;
+}
+.hero-title .grad {
+    background: linear-gradient(135deg, var(--accent-green), var(--accent-blue), var(--accent-purple));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+.hero-sub {
+    color: var(--text-secondary);
+    font-size: 16px;
+    max-width: 640px;
+    margin: 0 auto 32px;
+    line-height: 1.9;
+}
+.hero-cta { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; }
+.btn-lg { padding: 16px 34px; font-size: 16px; border-radius: 16px; }
+
+.hero-stats {
+    display: flex;
+    justify-content: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-top: 48px;
+}
+.stat {
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: 16px;
+    padding: 18px 30px;
+    min-width: 140px;
+    backdrop-filter: blur(20px);
+}
+.stat-value {
+    font-size: 28px;
+    font-weight: 900;
+    font-family: var(--font-mono);
+    background: linear-gradient(135deg, var(--accent-green), var(--accent-blue));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+.stat-label { font-size: 12px; color: var(--text-secondary); margin-top: 4px; }
+
+.landing-section {
+    padding: 60px 40px;
+    max-width: 1200px;
+    margin: 0 auto;
+    position: relative;
+    z-index: 1;
+}
+.section-head {
+    font-size: 28px;
+    font-weight: 900;
+    text-align: center;
+    margin-bottom: 40px;
+    background: linear-gradient(135deg, var(--text-primary), var(--accent-green));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+}
+.feature-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 18px;
+}
+.feature-card {
+    background: var(--glass-bg);
+    border: 1px solid var(--glass-border);
+    border-radius: 20px;
+    padding: 28px;
+    backdrop-filter: blur(20px);
+    transition: var(--transition);
+    position: relative;
+    overflow: hidden;
+}
+.feature-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 3px;
+    background: linear-gradient(90deg, var(--accent-green), var(--accent-blue), var(--accent-purple));
+    opacity: 0;
+    transition: opacity 0.3s;
+}
+.feature-card:hover { transform: translateY(-6px); border-color: var(--border-accent); box-shadow: var(--shadow-glow); }
+.feature-card:hover::before { opacity: 1; }
+.feature-icon { font-size: 40px; margin-bottom: 16px; }
+.feature-card h3 { font-size: 17px; font-weight: 800; margin-bottom: 10px; }
+.feature-card p { font-size: 13px; color: var(--text-secondary); line-height: 1.8; }
+
+.roles-section { padding-top: 20px; }
+.roles-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+}
+.role-card {
+    border-radius: 20px;
+    padding: 26px;
+    border: 1px solid var(--glass-border);
+    background: var(--glass-bg);
+    backdrop-filter: blur(20px);
+    transition: var(--transition);
+}
+.role-card:hover { transform: translateY(-6px) scale(1.02); box-shadow: var(--shadow-glow); }
+.role-admin:hover { border-color: var(--accent-red); }
+.role-teacher:hover { border-color: var(--accent-blue); }
+.role-student:hover { border-color: var(--accent-green); }
+.role-user:hover { border-color: var(--accent-purple); }
+.role-icon { font-size: 38px; margin-bottom: 12px; }
+.role-card h3 { font-size: 17px; font-weight: 800; margin-bottom: 8px; }
+.role-card p { font-size: 13px; color: var(--text-secondary); line-height: 1.8; }
+
+.landing-cta {
+    text-align: center;
+    padding: 60px 24px;
+    position: relative;
+    z-index: 1;
+}
+.landing-cta h2 { font-size: 34px; font-weight: 900; margin-bottom: 12px; }
+.landing-cta p { color: var(--text-secondary); margin-bottom: 28px; }
+
+.landing-footer {
+    text-align: center;
+    padding: 30px 20px;
+    color: var(--text-primary);
+    border-top: 1px solid var(--glass-border);
+    position: relative;
+    z-index: 1;
+    font-size: 14px;
+}
+.landing-footer .muted { color: var(--text-secondary); font-size: 12px; margin-top: 6px; }
+
+@media (max-width: 900px) {
+    .feature-grid { grid-template-columns: repeat(2, 1fr); }
+    .roles-grid { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 600px) {
+    .feature-grid { grid-template-columns: 1fr; }
+    .roles-grid { grid-template-columns: 1fr; }
+    .landing-header { padding: 16px 18px; flex-wrap: wrap; gap: 10px; }
+    .landing-logo { font-size: 20px; gap: 8px; }
+    .landing-logo .icon { font-size: 24px; }
+    .landing-nav { gap: 6px; flex-wrap: wrap; }
+    .landing-nav .btn-sm { padding: 8px 12px; font-size: 12px; }
+    .landing-section { padding: 40px 18px; }
+    .hero-stats { flex-direction: column; align-items: center; }
+    .stat { width: 100%; max-width: 240px; }
+}

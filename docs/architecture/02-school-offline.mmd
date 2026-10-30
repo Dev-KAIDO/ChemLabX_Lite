@@ -1,0 +1,8 @@
+flowchart TD
+    PC1["Student PC-01"] & PC2["Student PC-02"] & PC3["Student PC-03"] --> LS["Local ChemLabX Server (site)"]
+    TCH["Teacher PC"] --> LS
+    LS --> DBS[(Site Local Database)]
+    TCH --> CONSOLE["Teacher console: roster , activity , results , submissions"]
+    PC1 & PC2 & PC3 --> LOCAL[(Device IndexedDB + sync queue)]
+    LS --> QUEUE[(Site outbox / SyncEngine)]
+    QUEUE -.->|"when Internet available"| CLOUD["ChemLabX Cloud"]
