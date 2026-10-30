@@ -4,6 +4,13 @@
 
 An offline-first virtual chemistry lab PWA (the foundation / lite build of ChemLabX 4.0). No backend, no network calls at runtime: chemistry data, content packs, fonts, and the app shell are all local and precached by a service worker.
 
+## تشغيل مباشر
+
+**<https://dev-kaido.github.io/ChemLabX_Lite/>**
+
+افتح الرابط في أي متصفح — بلا تنزيل ولا تثبيت. البيانات والتقدم يُحفظان في متصفح **كل زائر** على حدة، ولا تُرسل إلى أي خادم. يمكن تثبيته كتطبيق من قائمة المتصفح («تثبيت» / «إضافة إلى الشاشة الرئيسية»).
+
+
 ---
 
 ## لماذا «Lite»؟
@@ -26,9 +33,9 @@ An offline-first virtual chemistry lab PWA (the foundation / lite build of ChemL
 - **أوفلاين حقيقي**: Service Worker `chemlabx-v14` + خطوط محلية مستضافة ذاتيًا (Cairo / Inter / Roboto Mono).
 - **بلا طلبات خارجية**: صفر اتصال بـ Google Fonts أو أي CDN.
 
-## التشغيل
+## التشغيل محليًا
 
-المتصفح يمنع Service Worker على `file://`، لذا شغّل خادمًا محليًا:
+المتصفح يمنع Service Worker على `file://`، لذا شغّل خادمًا محليًا (الرابط `127.0.0.1` يعمل على جهازك فقط):
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File test/server.ps1 -Port 8765
@@ -36,7 +43,13 @@ powershell -NoProfile -ExecutionPolicy Bypass -File test/server.ps1 -Port 8765
 
 ثم افتح: <http://127.0.0.1:8765/index.html>
 
-أو أي خادم ثابت آخر (Python: `python -m http.server 8765`).
+على أي نظام (Windows/macOS/Linux) يمكن استخدام Python بدلًا من PowerShell:
+
+```bash
+git clone https://github.com/Dev-KAIDO/ChemLabX_Lite.git
+cd ChemLabX_Lite
+python -m http.server 8765
+```
 
 ## حسابات تجريبية
 
