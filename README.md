@@ -63,12 +63,21 @@ ChemLabX Lite لا يعرض معلومة فقط؛ بل يبني حلقة تعل�
 
 <div align="center">
 
-<a href="#المعمل">🧪 المعمل</a> ·
-<a href="#لماذا-lite">🎯 لماذا Lite؟</a> ·
-<a href="#privacy--offline-first">🔒 الخصوصية والأوفلاين</a> ·
-<a href="#التشغيل">⚙️ التشغيل</a> ·
-<a href="#التحقق">✅ التحقق</a> ·
-<a href="#البنية">🧩 البنية</a>
+<table>
+<tr>
+<td align="center"><a href="#المعمل"><img src="https://img.shields.io/badge/01-Explore-0891b2?style=for-the-badge" alt="01 Explore"><br><strong>🧪 المعمل</strong></a></td>
+<td align="center">➜</td>
+<td align="center"><a href="#لماذا-lite"><img src="https://img.shields.io/badge/02-Understand-2563eb?style=for-the-badge" alt="02 Understand"><br><strong>🎯 Lite</strong></a></td>
+<td align="center">➜</td>
+<td align="center"><a href="#privacy--offline-first"><img src="https://img.shields.io/badge/03-Protect-0f766e?style=for-the-badge" alt="03 Protect"><br><strong>🔒 الخصوصية</strong></a></td>
+<td align="center">➜</td>
+<td align="center"><a href="#التشغيل"><img src="https://img.shields.io/badge/04-Run-d97706?style=for-the-badge" alt="04 Run"><br><strong>⚙️ التشغيل</strong></a></td>
+<td align="center">➜</td>
+<td align="center"><a href="#التحقق"><img src="https://img.shields.io/badge/05-Verify-16a34a?style=for-the-badge" alt="05 Verify"><br><strong>✅ التحقق</strong></a></td>
+</tr>
+</table>
+
+<sub><strong>Explore the lab → understand the foundation → protect the learner → run it → verify it.</strong></sub>
 
 </div>
 
