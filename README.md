@@ -35,7 +35,7 @@
 
 ChemLabX Lite لا يعرض معلومة فقط؛ بل يبني حلقة تعلم قصيرة: يتعلم الطالب، يجهز المواد بأمان، يستكشف التفاعل، يلاحظ النتيجة، ثم يعود بخبرة أفضل.
 
-<img src="./assets/lab-journey.svg" alt="ChemLabX learning journey from lesson to mastery" width="100%">
+<img src="./assets/lab-journey-premium.svg" alt="ChemLabX learning journey from lesson to mastery" width="100%">
 
 <div align="center">
 
